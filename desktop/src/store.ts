@@ -15,6 +15,10 @@ export type Settings = {
   llm_base_url: string;
   llm_api_key: string;
   llm_model: string;
+  tts_model: string;
+  tts_voice: string;
+  stt_model: string;
+  image_model: string;
 };
 
 export type Panel =
@@ -42,7 +46,7 @@ type AppState = {
   loadFriends: () => Promise<void>;
   selectFriend: (friendId: string) => Promise<void>;
   createFriend: (name: string, personality: string) => Promise<void>;
-  sendMessage: (content: string) => Promise<void>;
+  sendMessage: (content: string, assetIds?: string[]) => Promise<void>;
   loadSettings: () => Promise<void>;
   saveSettings: (settings: Settings) => Promise<void>;
   setCreateOpen: (open: boolean) => void;
@@ -55,6 +59,10 @@ const emptySettings: Settings = {
   llm_base_url: "",
   llm_api_key: "",
   llm_model: "",
+  tts_model: "",
+  tts_voice: "",
+  stt_model: "",
+  image_model: "",
 };
 
 export const useApp = create<AppState>((set, get) => ({
@@ -111,12 +119,12 @@ export const useApp = create<AppState>((set, get) => ({
     }
   },
 
-  sendMessage: async (content) => {
+  sendMessage: async (content, assetIds = []) => {
     const friendId = get().selectedId;
     if (!friendId || !content.trim() || get().sending) return;
     set({ sending: true, error: null });
     try {
-      const result = await sendMessage(friendId, content);
+      const result = await sendMessage(friendId, content, assetIds);
       set((state) => ({
         messages: [...state.messages, result.user_message, result.reply_message],
       }));
@@ -194,6 +202,10 @@ export const useApp = create<AppState>((set, get) => ({
       await saveSetting("llm_base_url", settings.llm_base_url);
       await saveSetting("llm_api_key", settings.llm_api_key);
       await saveSetting("llm_model", settings.llm_model);
+      await saveSetting("tts_model", settings.tts_model);
+      await saveSetting("tts_voice", settings.tts_voice);
+      await saveSetting("stt_model", settings.stt_model);
+      await saveSetting("image_model", settings.image_model);
       set({ settings, settingsOpen: false });
     } catch (error) {
       set({ error: String(error) });

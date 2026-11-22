@@ -1,0 +1,13 @@
+{
+  "module_id": "image",
+  "version": "0.1.0",
+  "entities": [],
+  "migrations": [],
+  "capabilities": [
+    { "name": "image.look", "input": "ImageRequest", "output": "ImageResult" },
+    { "name": "image.draw", "input": "DrawRequest", "output": "DrawResult" }
+  ],
+  "access": [
+    { "product_id": "yumeFriend", "permission": "write" }
+  ]
+}

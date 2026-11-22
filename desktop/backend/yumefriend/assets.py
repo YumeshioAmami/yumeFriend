@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import uuid
@@ -65,6 +66,12 @@ def get_asset(asset_id: str) -> tuple[dict, Path]:
     if not path.exists():
         raise HTTPException(status_code=404, detail="asset file not found")
     return item, path
+
+
+def asset_data_url(asset_id: str) -> str:
+    item, path = get_asset(asset_id)
+    data = base64.b64encode(path.read_bytes()).decode("ascii")
+    return f"data:{item.get('mime', 'application/octet-stream')};base64,{data}"
 
 
 @router.get("/assets/{asset_id}")

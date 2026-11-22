@@ -17,6 +17,8 @@ export type Message = {
   status: "streaming" | "completed" | "error" | "partial";
   error_text?: string | null;
   created_at: string;
+  image_asset_ids?: string[];
+  voice_asset_id?: string | null;
 };
 
 export type Memory = {
@@ -126,10 +128,11 @@ export function listMessages(friendId: string): Promise<ListResult<Message>> {
 export function sendMessage(
   friendId: string,
   content: string,
+  assetIds: string[] = [],
 ): Promise<{ user_message: Message; reply_message: Message }> {
   return request(`/friends/${friendId}/messages`, {
     method: "POST",
-    body: JSON.stringify({ content, asset_ids: [], reply: true }),
+    body: JSON.stringify({ content, asset_ids: assetIds, reply: true }),
   });
 }
 
@@ -349,4 +352,34 @@ export function moveFile(src: string, dst: string): Promise<void> {
 
 export function deleteFile(path: string): Promise<void> {
   return request(`/files?path=${encodeURIComponent(path)}`, { method: "DELETE" });
+}
+
+export async function uploadAsset(file: File | Blob): Promise<{ id: string }> {
+  const form = new FormData();
+  form.append("file", file, file instanceof File ? file.name : "audio.webm");
+  const response = await fetch(`${API_BASE}/assets`, { method: "POST", body: form });
+  if (!response.ok) throw new Error(await response.text());
+  return response.json() as Promise<{ id: string }>;
+}
+
+export async function transcribeAudio(blob: Blob): Promise<{ text: string }> {
+  const form = new FormData();
+  form.append("file", blob, "voice.webm");
+  const response = await fetch(`${API_BASE}/speech/transcribe`, {
+    method: "POST",
+    body: form,
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return response.json() as Promise<{ text: string }>;
+}
+
+export function synthesizeVoice(messageId: string): Promise<{ asset_id: string }> {
+  return request(`/messages/${messageId}/voice`, { method: "POST" });
+}
+
+export function drawImage(friendId: string, prompt: string): Promise<Message> {
+  return request(`/friends/${friendId}/draw`, {
+    method: "POST",
+    body: JSON.stringify({ prompt }),
+  });
 }

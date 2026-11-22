@@ -16,12 +16,15 @@ from loguru import logger
 from pydantic import BaseModel
 
 from yumefriend import __version__
+from yumefriend.assets import asset_data_url
 from yumefriend.assets import router as assets_router
 from yumefriend.chat import StreamRegistry, generate_reply, load_model_config
 from yumefriend.context import load_prompt_context
 from yumefriend.core import CoreClient
 from yumefriend.features import router
 from yumefriend.knowledge import router as knowledge_router
+from yumefriend.media import attach_asset, message_with_assets
+from yumefriend.media import router as media_router
 from yumefriend.tools import router as tools_router
 
 
@@ -68,6 +71,7 @@ app.include_router(router)
 app.include_router(assets_router)
 app.include_router(knowledge_router)
 app.include_router(tools_router)
+app.include_router(media_router)
 
 
 def get_core(request: Request) -> CoreClient:
@@ -151,6 +155,7 @@ def version() -> dict[str, str | int]:
 async def friends(request: Request) -> dict[str, Any]:
     result = await get_core(request).read("friend", "friends", limit=200)
     items = sorted(result.get("items", []), key=lambda item: item.get("created_at", ""))
+    items = [await message_with_assets(get_core(request), item) for item in items]
     return {"items": items, "next_cursor": None}
 
 
@@ -212,6 +217,9 @@ async def send_message(
             "status": "completed",
         },
     )
+    for index, asset_id in enumerate(draft.asset_ids):
+        await attach_asset(core, user["record"]["id"], asset_id, "image", index)
+    image_urls = [asset_data_url(asset_id) for asset_id in draft.asset_ids]
     if draft.reply:
         reply = await core.write(
             "chat",
@@ -270,6 +278,7 @@ async def send_message(
                     history,
                     context,
                     config,
+                    image_urls,
                 )
             )
             request.app.state.tasks.add(task)
@@ -277,7 +286,10 @@ async def send_message(
     else:
         assistant = None
 
-    return {"user_message": user["record"], "reply_message": assistant}
+    return {
+        "user_message": await message_with_assets(core, user["record"]),
+        "reply_message": assistant,
+    }
 
 
 @app.get("/api/v1/messages/{message_id}/stream")

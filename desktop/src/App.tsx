@@ -1,5 +1,13 @@
-import { useEffect, useState } from "react";
-import type { Friend, Message } from "./api";
+import { useEffect, useRef, useState } from "react";
+import {
+  assetUrl,
+  drawImage,
+  synthesizeVoice,
+  transcribeAudio,
+  uploadAsset,
+  type Friend,
+  type Message,
+} from "./api";
 import { FeatureDrawer } from "./FeatureDrawer";
 import { useApp, type Settings } from "./store";
 
@@ -21,6 +29,7 @@ function Avatar({ friend }: { friend: Friend }) {
 
 function MessageRow({ message, friend }: { message: Message; friend: Friend }) {
   const assistant = message.role === "assistant";
+  const refreshMessages = useApp((state) => state.refreshMessages);
   return (
     <div className="flex gap-3 py-3">
       {assistant ? <Avatar friend={friend} /> : <div className="w-[30px] shrink-0" />}
@@ -30,6 +39,28 @@ function MessageRow({ message, friend }: { message: Message; friend: Friend }) {
           {message.content}
           {message.status === "streaming" && <span className="ml-1 animate-pulse">▍</span>}
         </div>
+        {message.image_asset_ids?.map((assetId) => (
+          <img
+            key={assetId}
+            className="mt-2 max-h-72 rounded border border-stone-200"
+            src={assetUrl(assetId)}
+            alt="图片"
+          />
+        ))}
+        {message.voice_asset_id && (
+          <audio className="mt-2 h-8" controls src={assetUrl(message.voice_asset_id)} />
+        )}
+        {assistant && !message.voice_asset_id && message.content && (
+          <button
+            className="mt-2 text-[11px] text-stone-400 hover:text-stone-700"
+            onClick={async () => {
+              await synthesizeVoice(message.id);
+              await refreshMessages();
+            }}
+          >
+            念给我听
+          </button>
+        )}
         {message.error_text && (
           <div className="mt-1 text-[12px] text-red-600">{message.error_text}</div>
         )}
@@ -138,6 +169,26 @@ function SettingsModal() {
             }
           />
         </label>
+        <div className="mt-4 border-t border-stone-200 pt-3 text-xs text-stone-500">语音 / 图片</div>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          {([
+            ["tts_model", "语音合成模型"],
+            ["tts_voice", "音色"],
+            ["stt_model", "语音识别模型"],
+            ["image_model", "图片生成模型"],
+          ] as const).map(([key, label]) => (
+            <label key={key} className="block text-xs text-stone-500">
+              {label}
+              <input
+                className="mt-1 w-full rounded border border-stone-300 px-3 py-2 text-sm outline-none focus:border-stone-500"
+                value={draft[key]}
+                onChange={(event) =>
+                  setDraft((current) => ({ ...current, [key]: event.target.value }))
+                }
+              />
+            </label>
+          ))}
+        </div>
         <div className="mt-4 flex justify-end gap-2">
           <button
             type="button"
@@ -154,8 +205,20 @@ function SettingsModal() {
 }
 
 function Chat() {
-  const { friends, selectedId, messages, sending, error, sendMessage, setPanel } = useApp();
+  const {
+    friends,
+    selectedId,
+    messages,
+    sending,
+    error,
+    sendMessage,
+    setPanel,
+    refreshMessages,
+  } = useApp();
   const [draft, setDraft] = useState("");
+  const [assetIds, setAssetIds] = useState<string[]>([]);
+  const [recording, setRecording] = useState(false);
+  const recorderRef = useRef<MediaRecorder | null>(null);
   const friend = friends.find((item) => item.id === selectedId);
 
   if (!friend) {
@@ -216,13 +279,86 @@ function Chat() {
       </div>
       {error && <div className="px-8 pb-2 text-[12px] text-red-600">{error}</div>}
       <div className="border-t border-stone-200 p-4">
+        {assetIds.length > 0 && (
+          <div className="mb-2 flex gap-2">
+            {assetIds.map((assetId) => (
+              <img
+                key={assetId}
+                className="h-14 w-14 rounded border border-stone-200 object-cover"
+                src={assetUrl(assetId)}
+                alt="待发送图片"
+              />
+            ))}
+          </div>
+        )}
+        <div className="mb-2 flex gap-2 text-xs">
+          <label className="cursor-pointer rounded border border-stone-300 px-2 py-1 text-stone-600">
+            图片
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={async (event) => {
+                const file = event.target.files?.[0];
+                if (!file) return;
+                const asset = await uploadAsset(file);
+                setAssetIds((current) => [...current, asset.id]);
+                event.target.value = "";
+              }}
+            />
+          </label>
+          <button
+            className={`rounded border px-2 py-1 ${
+              recording
+                ? "border-red-300 text-red-500"
+                : "border-stone-300 text-stone-600"
+            }`}
+            onClick={async () => {
+              if (recording) {
+                recorderRef.current?.stop();
+                return;
+              }
+              const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+              const recorder = new MediaRecorder(stream);
+              const chunks: Blob[] = [];
+              recorder.ondataavailable = (event) => chunks.push(event.data);
+              recorder.onstop = async () => {
+                stream.getTracks().forEach((track) => track.stop());
+                setRecording(false);
+                try {
+                  const result = await transcribeAudio(new Blob(chunks, { type: "audio/webm" }));
+                  setDraft((current) => `${current}${result.text}`);
+                } catch {
+                  setDraft((current) => current);
+                }
+              };
+              recorder.start();
+              recorderRef.current = recorder;
+              setRecording(true);
+            }}
+          >
+            {recording ? "停止" : "语音"}
+          </button>
+          <button
+            className="rounded border border-stone-300 px-2 py-1 text-stone-600"
+            onClick={async () => {
+              const prompt = window.prompt("画什么？");
+              if (!prompt) return;
+              await drawImage(friend.id, prompt);
+              await refreshMessages();
+            }}
+          >
+            画图
+          </button>
+        </div>
         <form
           className="flex items-end gap-2"
           onSubmit={(event) => {
             event.preventDefault();
             if (!draft.trim()) return;
-            void sendMessage(draft);
+            void sendMessage(draft, assetIds);
             setDraft("");
+            setAssetIds([]);
           }}
         >
           <textarea

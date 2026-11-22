@@ -68,7 +68,8 @@ def build_prompt(
     friend: dict[str, Any],
     history: list[dict[str, Any]],
     context: PromptContext,
-) -> list[dict[str, str]]:
+    image_urls: list[str] | None = None,
+) -> list[dict[str, Any]]:
     now = datetime.now().astimezone()
 
     def section(title: str, body: str) -> str:
@@ -101,6 +102,21 @@ def build_prompt(
         content = message.get("content", "")
         if role in {"user", "assistant"} and content:
             messages.append({"role": role, "content": content})
+    if image_urls:
+        for index in range(len(messages) - 1, 0, -1):
+            if messages[index]["role"] == "user":
+                content = messages[index]["content"]
+                messages[index] = {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": content},
+                        *[
+                            {"type": "image_url", "image_url": {"url": url}}
+                            for url in image_urls
+                        ],
+                    ],
+                }
+                break
     return messages
 
 
@@ -112,6 +128,7 @@ async def generate_reply(
     history: list[dict[str, Any]],
     context: PromptContext,
     config: ModelConfig,
+    image_urls: list[str] | None = None,
 ) -> None:
     streams.push(message_id, {"type": "start", "data": {"message_id": message_id}})
     client = AsyncOpenAI(base_url=config.base_url or None, api_key=config.api_key)
@@ -119,7 +136,7 @@ async def generate_reply(
     try:
         stream = await client.chat.completions.create(
             model=config.model,
-            messages=build_prompt(friend, history, context),
+            messages=build_prompt(friend, history, context, image_urls),
             temperature=0.7,
             stream=True,
         )

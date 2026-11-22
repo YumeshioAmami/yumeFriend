@@ -1,0 +1,34 @@
+{
+  "module_id": "voice",
+  "version": "0.1.0",
+  "entities": [
+    {
+      "name": "voices",
+      "key": ["id"],
+      "sync": false,
+      "assets": false,
+      "columns": {
+        "id": "TEXT",
+        "name": "TEXT",
+        "provider": "TEXT",
+        "config_json": "TEXT",
+        "speed": "REAL",
+        "credential_key": "TEXT",
+        "created_at": "TEXT",
+        "updated_at": "TEXT",
+        "deleted_at": "TEXT"
+      }
+    }
+  ],
+  "migrations": [
+    {
+      "version": 1,
+      "sql": [
+        "CREATE TABLE voices (id TEXT PRIMARY KEY, name TEXT NOT NULL, provider TEXT NOT NULL, config_json TEXT NOT NULL DEFAULT '{}', speed REAL NOT NULL DEFAULT 1.0, credential_key TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT);"
+      ]
+    }
+  ],
+  "access": [
+    { "product_id": "yumeFriend", "permission": "write" }
+  ]
+}
