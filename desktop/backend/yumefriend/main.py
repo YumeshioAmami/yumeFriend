@@ -6,10 +6,11 @@ import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from loguru import logger
@@ -69,6 +70,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.core = core
     app.state.streams = StreamRegistry()
     app.state.tasks = set()
+    logger.info("yumeFriend backend started")
     reminder = asyncio.create_task(reminder_loop(core))
     life = asyncio.create_task(life_loop(core))
     yield
@@ -91,6 +93,11 @@ app.include_router(tools_router)
 app.include_router(media_router)
 app.include_router(visual_router)
 app.include_router(life_router)
+
+LOG_DIR = Path(__file__).resolve().parents[3] / "user_data" / "logs"
+LOG_FILE = LOG_DIR / "yumefriend.log"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+logger.add(LOG_FILE, rotation="5 MB", retention=3, encoding="utf-8")
 
 
 def get_core(request: Request) -> CoreClient:
@@ -189,6 +196,20 @@ def version() -> dict[str, str | int]:
         "yumeCore": "0.1.0",
         "protocol": 1,
     }
+
+
+@app.get("/api/v1/logs")
+def logs() -> dict[str, list[str]]:
+    if not LOG_FILE.exists():
+        return {"items": []}
+    return {"items": LOG_FILE.read_text(encoding="utf-8", errors="ignore").splitlines()[-500:]}
+
+
+@app.delete("/api/v1/logs", status_code=204)
+def clear_logs() -> Response:
+    if LOG_FILE.exists():
+        LOG_FILE.write_text("", encoding="utf-8")
+    return Response(status_code=204)
 
 
 @app.get("/api/v1/friends")

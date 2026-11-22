@@ -7,6 +7,7 @@ import {
   createSchedule,
   createThought,
   createVisualPack,
+  clearLogs,
   deleteDocument,
   deleteFile,
   deleteMemory,
@@ -16,6 +17,7 @@ import {
   deleteVisualPack,
   doneThought,
   getLife,
+  getLogs,
   getStyle,
   listDocuments,
   listFiles,
@@ -64,6 +66,7 @@ const tabs: { id: Exclude<Panel, null>; label: string }[] = [
   { id: "file", label: "文件" },
   { id: "visual", label: "呈现" },
   { id: "life", label: "生活" },
+  { id: "logs", label: "日志" },
 ];
 
 function Drawer({
@@ -76,7 +79,7 @@ function Drawer({
   children: ReactNode;
 }) {
   return (
-    <aside className="flex w-[420px] shrink-0 flex-col border-l border-stone-200 bg-white">
+    <aside className="flex w-[420px] shrink-0 flex-col border-l border-[var(--border)] bg-[var(--panel)]">
       <div className="flex h-14 items-center justify-between border-b border-stone-200 px-4">
         <span className="text-sm font-medium text-stone-800">{title}</span>
         <button className="text-xs text-stone-400 hover:text-stone-700" onClick={onClose}>
@@ -1032,14 +1035,51 @@ function LifePanel({ friend }: { friend: Friend }) {
   );
 }
 
+function LogPanel() {
+  const [items, setItems] = useState<string[]>([]);
+  const load = async () => {
+    const result = await getLogs();
+    setItems(result.items);
+  };
+  useEffect(() => {
+    void load();
+  }, []);
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2">
+        <button
+          className="rounded border border-stone-300 px-3 py-1.5 text-xs text-stone-600"
+          onClick={() => void load()}
+        >
+          刷新
+        </button>
+        <button
+          className="rounded border border-red-200 px-3 py-1.5 text-xs text-red-500"
+          onClick={async () => {
+            await clearLogs();
+            await load();
+          }}
+        >
+          清空
+        </button>
+      </div>
+      <pre className="max-h-[70vh] overflow-auto whitespace-pre-wrap rounded bg-stone-950 p-3 font-mono text-[11px] leading-5 text-stone-200">
+        {items.join("\n") || "暂无日志"}
+      </pre>
+    </div>
+  );
+}
+
 export function FeatureDrawer() {
-  const { panel, setPanel, selectedId, friends } = useApp();
-  if (!panel || !selectedId) return null;
+  const { panel, setPanel, selectedId, friends, features } = useApp();
+  if (!panel || (panel !== "logs" && !selectedId)) return null;
+  const friendId = selectedId ?? "";
   const friend = friends.find((item) => item.id === selectedId);
+  const visibleTabs = tabs.filter((tab) => tab.id === "logs" || features[tab.id] !== false);
   return (
     <Drawer title={tabs.find((tab) => tab.id === panel)?.label ?? ""} onClose={() => setPanel(null)}>
       <div className="mb-4 flex gap-1">
-        {tabs.map((tab) => (
+        {visibleTabs.map((tab) => (
           <button
             key={tab.id}
             className={`rounded px-2 py-1 text-xs ${
@@ -1051,16 +1091,17 @@ export function FeatureDrawer() {
           </button>
         ))}
       </div>
-      {panel === "memory" && <MemoryPanel friendId={selectedId} />}
-      {panel === "schedule" && <SchedulePanel friendId={selectedId} />}
-      {panel === "thought" && <ThoughtPanel friendId={selectedId} />}
-      {panel === "style" && <StylePanel friendId={selectedId} />}
-      {panel === "knowledge" && <KnowledgePanel friendId={selectedId} />}
-      {panel === "search" && <SearchPanel friendId={selectedId} />}
-      {panel === "screen" && <ScreenPanel friendId={selectedId} />}
+      {panel === "memory" && <MemoryPanel friendId={friendId} />}
+      {panel === "schedule" && <SchedulePanel friendId={friendId} />}
+      {panel === "thought" && <ThoughtPanel friendId={friendId} />}
+      {panel === "style" && <StylePanel friendId={friendId} />}
+      {panel === "knowledge" && <KnowledgePanel friendId={friendId} />}
+      {panel === "search" && <SearchPanel friendId={friendId} />}
+      {panel === "screen" && <ScreenPanel friendId={friendId} />}
       {panel === "file" && <FilePanel />}
       {panel === "visual" && friend && <VisualPanel friend={friend} />}
       {panel === "life" && friend && <LifePanel friend={friend} />}
+      {panel === "logs" && <LogPanel />}
     </Drawer>
   );
 }

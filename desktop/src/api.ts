@@ -165,7 +165,7 @@ export function getSettings(): Promise<ListResult<{ key: string; value_json: str
   return request("/settings");
 }
 
-export async function saveSetting(key: string, value: string): Promise<void> {
+export async function saveSetting(key: string, value: unknown): Promise<void> {
   await request("/settings", {
     method: "PUT",
     body: JSON.stringify({
@@ -440,4 +440,12 @@ export function pauseLife(friendId: string): Promise<void> {
 
 export function resumeLife(friendId: string): Promise<void> {
   return request(`/friends/${friendId}/life/resume`, { method: "POST" });
+}
+
+export function getLogs(): Promise<{ items: string[] }> {
+  return request("/logs");
+}
+
+export function clearLogs(): Promise<void> {
+  return request("/logs", { method: "DELETE" });
 }

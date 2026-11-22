@@ -10,7 +10,7 @@ import {
   type Message,
 } from "./api";
 import { FeatureDrawer } from "./FeatureDrawer";
-import { useApp, type Settings } from "./store";
+import { useApp, type Settings, type Theme } from "./store";
 
 function formatTime(value: string): string {
   const date = new Date(value);
@@ -79,7 +79,7 @@ function CreateFriendModal() {
   return (
     <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/20">
       <form
-        className="w-[460px] rounded-lg bg-white p-5 shadow-xl"
+        className="w-[460px] rounded-lg bg-[var(--panel)] p-5 shadow-xl"
         onSubmit={(event) => {
           event.preventDefault();
           if (!name.trim()) return;
@@ -118,9 +118,68 @@ function CreateFriendModal() {
   );
 }
 
+function ThemeMenu() {
+  const { theme, saveTheme } = useApp();
+  const [open, setOpen] = useState(false);
+  const colors: Array<{ id: Theme["color"]; label: string; dot: string }> = [
+    { id: "paper", label: "纸", dot: "#c9b38d" },
+    { id: "moss", label: "苔", dot: "#7f9a72" },
+    { id: "tea", label: "茶", dot: "#a57b56" },
+    { id: "sakura", label: "樱", dot: "#c98e9e" },
+  ];
+  return (
+    <div className="relative">
+      <button
+        className="rounded px-2 py-1 text-lg text-stone-500 hover:bg-stone-100"
+        onClick={() => setOpen((current) => !current)}
+      >
+        ⋯
+      </button>
+      {open && (
+        <div className="absolute right-0 top-10 z-40 w-44 rounded-lg border border-stone-200 bg-white p-3 shadow-xl">
+          <div className="mb-2 flex gap-2">
+            {(["light", "dark"] as const).map((mode) => (
+              <button
+                key={mode}
+                className={`flex-1 rounded px-2 py-1 text-xs ${
+                  theme.mode === mode ? "bg-stone-800 text-white" : "bg-stone-100 text-stone-600"
+                }`}
+                onClick={() => void saveTheme({ ...theme, mode })}
+              >
+                {mode === "light" ? "浅色" : "深色"}
+              </button>
+            ))}
+          </div>
+          {colors.map((color) => (
+            <button
+              key={color.id}
+              className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs ${
+                theme.color === color.id ? "bg-stone-100 text-stone-900" : "text-stone-600"
+              }`}
+              onClick={() => void saveTheme({ ...theme, color: color.id })}
+            >
+              <span className="h-3 w-3 rounded-full" style={{ background: color.dot }} />
+              {color.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SettingsModal() {
-  const { settingsOpen, setSettingsOpen, settings, saveSettings } = useApp();
+  const {
+    settingsOpen,
+    setSettingsOpen,
+    settings,
+    saveSettings,
+    features,
+    saveFeatures,
+    setPanel,
+  } = useApp();
   const [draft, setDraft] = useState<Settings>(settings);
+  const [updateStatus, setUpdateStatus] = useState("");
 
   useEffect(() => {
     if (settingsOpen) setDraft(settings);
@@ -130,7 +189,7 @@ function SettingsModal() {
   return (
     <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/20">
       <form
-        className="w-[520px] rounded-lg bg-white p-5 shadow-xl"
+        className="max-h-[85vh] w-[560px] overflow-y-auto rounded-lg bg-[var(--panel)] p-5 shadow-xl"
         onSubmit={(event) => {
           event.preventDefault();
           void saveSettings(draft);
@@ -190,6 +249,73 @@ function SettingsModal() {
             </label>
           ))}
         </div>
+        <label className="mt-3 block text-xs text-stone-500">
+          更新地址
+          <input
+            className="mt-1 w-full rounded border border-stone-300 px-3 py-2 text-sm outline-none focus:border-stone-500"
+            value={draft.update_url}
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, update_url: event.target.value }))
+            }
+          />
+        </label>
+        <div className="mt-3 flex items-center gap-2">
+          <button
+            type="button"
+            className="rounded border border-stone-300 px-3 py-1.5 text-xs text-stone-600"
+            onClick={async () => {
+              try {
+                const result = await window.yumeFriend?.checkUpdate?.(draft.update_url);
+                setUpdateStatus(result?.version ? `发现 ${result.version}` : "已是最新");
+              } catch (reason) {
+                setUpdateStatus(String(reason));
+              }
+            }}
+          >
+            检查更新
+          </button>
+          <button
+            type="button"
+            className="rounded border border-stone-300 px-3 py-1.5 text-xs text-stone-600"
+            onClick={() => {
+              setPanel("logs");
+              setSettingsOpen(false);
+            }}
+          >
+            查看日志
+          </button>
+          {updateStatus && <span className="text-xs text-stone-500">{updateStatus}</span>}
+        </div>
+        <div className="mt-4 border-t border-stone-200 pt-3">
+          <div className="mb-2 text-xs text-stone-500">功能开关</div>
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              ["memory", "记忆"],
+              ["schedule", "日程"],
+              ["thought", "想法"],
+              ["expression", "风格"],
+              ["document", "知识"],
+              ["search", "搜索"],
+              ["screen", "看屏"],
+              ["file", "文件"],
+              ["image", "图片"],
+              ["voice", "语音"],
+              ["visual", "呈现"],
+              ["life", "生活"],
+            ].map(([id, label]) => (
+              <label key={id} className="flex items-center gap-1 text-xs text-stone-600">
+                <input
+                  type="checkbox"
+                  checked={features[id] !== false}
+                  onChange={(event) =>
+                    void saveFeatures({ ...features, [id]: event.target.checked })
+                  }
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+        </div>
         <div className="mt-4 flex justify-end gap-2">
           <button
             type="button"
@@ -215,6 +341,7 @@ function Chat() {
     sendMessage,
     setPanel,
     refreshMessages,
+    features,
   } = useApp();
   const [draft, setDraft] = useState("");
   const [assetIds, setAssetIds] = useState<string[]>([]);
@@ -249,7 +376,9 @@ function Chat() {
             ["file", "文件"],
             ["visual", "呈现"],
             ["life", "生活"],
-          ].map(([id, label]) => (
+          ]
+            .filter(([id]) => features[id] !== false)
+            .map(([id, label]) => (
             <button
               key={id}
               className="rounded px-2 py-1 text-xs text-stone-500 hover:bg-stone-100"
@@ -463,6 +592,7 @@ export default function App() {
     loadSettings,
     selectFriend,
     refreshMessages,
+    theme,
   } = useApp();
 
   useEffect(() => {
@@ -477,19 +607,26 @@ export default function App() {
     return () => window.clearInterval(timer);
   }, [refreshMessages]);
 
+  useEffect(() => {
+    document.documentElement.dataset.theme = `${theme.color}-${theme.mode}`;
+  }, [theme]);
+
   return (
-    <div className="flex h-screen flex-col bg-stone-50 text-stone-900">
-      <header className="flex h-14 items-center justify-between border-b border-stone-200 px-5">
+    <div className="flex h-screen flex-col bg-[var(--bg)] text-[var(--text)]">
+      <header className="flex h-14 items-center justify-between border-b border-[var(--border)] px-5">
         <div className="text-[15px] font-medium">yumeFriend</div>
-        <button
-          className="rounded px-3 py-1.5 text-sm text-stone-500 hover:bg-stone-100"
-          onClick={() => setSettingsOpen(true)}
-        >
-          设置
-        </button>
+        <div className="flex items-center gap-1">
+          <ThemeMenu />
+          <button
+            className="rounded px-3 py-1.5 text-sm text-stone-500 hover:bg-stone-100"
+            onClick={() => setSettingsOpen(true)}
+          >
+            设置
+          </button>
+        </div>
       </header>
       <div className="flex min-h-0 flex-1">
-        <aside className="flex w-[260px] shrink-0 flex-col border-r border-stone-200 bg-stone-100/60">
+        <aside className="flex w-[260px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--panel-2)]">
           <div className="flex items-center justify-between px-4 py-3">
             <span className="text-xs text-stone-500">朋友</span>
             <button
@@ -506,7 +643,7 @@ export default function App() {
                 key={friend.id}
                 className={`mb-1 flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm ${
                   friend.id === selectedId
-                    ? "bg-white text-stone-900 shadow-sm"
+                    ? "bg-[var(--panel)] text-[var(--text)] shadow-sm"
                     : "text-stone-600 hover:bg-stone-200/60"
                 }`}
                 onClick={() => void selectFriend(friend.id)}

@@ -3,7 +3,10 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import updater from "electron-updater";
 import { fileURLToPath } from "node:url";
+
+const { autoUpdater } = updater;
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(currentDir, "..");
@@ -137,6 +140,19 @@ function createPetWindow(): void {
 ipcMain.handle("pet:open", () => createPetWindow());
 ipcMain.handle("pet:close", (event) => {
   BrowserWindow.fromWebContents(event.sender)?.close();
+});
+ipcMain.handle("update:check", async (_event, url: string) => {
+  if (!url) throw new Error("未配置更新地址");
+  autoUpdater.autoDownload = false;
+  autoUpdater.setFeedURL({ provider: "generic", url });
+  const result = await autoUpdater.checkForUpdates();
+  return { version: result?.updateInfo.version ?? null };
+});
+ipcMain.handle("update:download", async () => {
+  await autoUpdater.downloadUpdate();
+});
+ipcMain.handle("update:install", () => {
+  autoUpdater.quitAndInstall();
 });
 
 void app.whenReady().then(async () => {

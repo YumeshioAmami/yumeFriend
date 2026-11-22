@@ -1,1 +1,79 @@
 @import "tailwindcss";
+
+:root,
+[data-theme="paper-light"] {
+  --bg: #f7f3ea;
+  --panel: #fffdf8;
+  --panel-2: #efe7d8;
+  --border: #ddd2c0;
+  --text: #2e2922;
+  --muted: #8b8172;
+}
+
+[data-theme="paper-dark"] {
+  --bg: #1e1b17;
+  --panel: #29241e;
+  --panel-2: #342d25;
+  --border: #4a4034;
+  --text: #f2eadc;
+  --muted: #b7a993;
+}
+
+[data-theme="moss-light"] {
+  --bg: #eef2e8;
+  --panel: #fbfdf8;
+  --panel-2: #e0e8d8;
+  --border: #c7d2bd;
+  --text: #243024;
+  --muted: #71806c;
+}
+
+[data-theme="moss-dark"] {
+  --bg: #171e18;
+  --panel: #202a21;
+  --panel-2: #2b372c;
+  --border: #425544;
+  --text: #e6f0e4;
+  --muted: #a8b8a4;
+}
+
+[data-theme="tea-light"] {
+  --bg: #f3eee7;
+  --panel: #fffaf3;
+  --panel-2: #e8ded1;
+  --border: #d4c4b2;
+  --text: #332a22;
+  --muted: #8f7d6b;
+}
+
+[data-theme="tea-dark"] {
+  --bg: #201a16;
+  --panel: #2b231d;
+  --panel-2: #382d25;
+  --border: #514035;
+  --text: #f0e4d8;
+  --muted: #bea995;
+}
+
+[data-theme="sakura-light"] {
+  --bg: #f8f0f1;
+  --panel: #fffafb;
+  --panel-2: #f0dfe3;
+  --border: #ddc5cb;
+  --text: #35272b;
+  --muted: #9b7e86;
+}
+
+[data-theme="sakura-dark"] {
+  --bg: #21191c;
+  --panel: #2c2226;
+  --panel-2: #392a30;
+  --border: #543d45;
+  --text: #f3e6ea;
+  --muted: #c0a5ad;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+}

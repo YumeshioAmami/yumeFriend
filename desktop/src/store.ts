@@ -19,7 +19,15 @@ export type Settings = {
   tts_voice: string;
   stt_model: string;
   image_model: string;
+  update_url: string;
 };
+
+export type Theme = {
+  color: "paper" | "moss" | "tea" | "sakura";
+  mode: "light" | "dark";
+};
+
+export type Features = Record<string, boolean>;
 
 export type Panel =
   | "memory"
@@ -32,6 +40,7 @@ export type Panel =
   | "file"
   | "visual"
   | "life"
+  | "logs"
   | null;
 
 type AppState = {
@@ -46,6 +55,8 @@ type AppState = {
   settingsOpen: boolean;
   panel: Panel;
   immersive: boolean;
+  theme: Theme;
+  features: Features;
   loadFriends: () => Promise<void>;
   selectFriend: (friendId: string) => Promise<void>;
   createFriend: (name: string, personality: string) => Promise<void>;
@@ -56,6 +67,8 @@ type AppState = {
   setSettingsOpen: (open: boolean) => void;
   setPanel: (panel: Panel) => void;
   setImmersive: (open: boolean) => void;
+  saveTheme: (theme: Theme) => Promise<void>;
+  saveFeatures: (features: Features) => Promise<void>;
   refreshMessages: () => Promise<void>;
 };
 
@@ -67,6 +80,7 @@ const emptySettings: Settings = {
   tts_voice: "",
   stt_model: "",
   image_model: "",
+  update_url: "",
 };
 
 export const useApp = create<AppState>((set, get) => ({
@@ -81,6 +95,8 @@ export const useApp = create<AppState>((set, get) => ({
   settingsOpen: false,
   panel: null,
   immersive: false,
+  theme: { color: "paper", mode: "light" },
+  features: {},
 
   loadFriends: async () => {
     set({ loading: true, error: null });
@@ -195,6 +211,12 @@ export const useApp = create<AppState>((set, get) => ({
         if (item.key in values) {
           values[item.key as keyof Settings] = JSON.parse(item.value_json);
         }
+        if (item.key === "theme") {
+          set({ theme: JSON.parse(item.value_json) as Theme });
+        }
+        if (item.key === "features") {
+          set({ features: JSON.parse(item.value_json) as Features });
+        }
       }
       set({ settings: values });
     } catch (error) {
@@ -211,6 +233,7 @@ export const useApp = create<AppState>((set, get) => ({
       await saveSetting("tts_voice", settings.tts_voice);
       await saveSetting("stt_model", settings.stt_model);
       await saveSetting("image_model", settings.image_model);
+      await saveSetting("update_url", settings.update_url);
       set({ settings, settingsOpen: false });
     } catch (error) {
       set({ error: String(error) });
@@ -221,6 +244,14 @@ export const useApp = create<AppState>((set, get) => ({
   setSettingsOpen: (open) => set({ settingsOpen: open }),
   setPanel: (panel) => set({ panel }),
   setImmersive: (open) => set({ immersive: open }),
+  saveTheme: async (theme) => {
+    await saveSetting("theme", theme);
+    set({ theme });
+  },
+  saveFeatures: async (features) => {
+    await saveSetting("features", features);
+    set({ features });
+  },
 
   refreshMessages: async () => {
     const friendId = get().selectedId;
