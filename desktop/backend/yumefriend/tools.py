@@ -44,18 +44,22 @@ def safe_path(raw: str) -> Path:
 
 @router.post("/friends/{friend_id}/search")
 async def search(_: Request, friend_id: str, body: SearchBody) -> dict[str, Any]:
+    return {"items": await bing_search(body.query, body.limit)}
+
+
+async def bing_search(query: str, limit: int = 5) -> list[dict[str, Any]]:
     async with httpx.AsyncClient(
         timeout=20,
         headers={"User-Agent": "Mozilla/5.0"},
     ) as client:
         response = await client.get(
             "https://www.bing.com/search",
-            params={"q": body.query},
+            params={"q": query},
         )
         response.raise_for_status()
     soup = BeautifulSoup(response.text, "html.parser")
     items = []
-    for result in soup.select("li.b_algo")[: max(1, body.limit)]:
+    for result in soup.select("li.b_algo")[: max(1, limit)]:
         link = result.select_one("h2 a")
         snippet = result.select_one(".b_caption p")
         if link is None:
@@ -67,7 +71,7 @@ async def search(_: Request, friend_id: str, body: SearchBody) -> dict[str, Any]
                 "snippet": snippet.get_text(" ", strip=True) if snippet else "",
             }
         )
-    return {"items": items}
+    return items
 
 
 @router.post("/friends/{friend_id}/screen")

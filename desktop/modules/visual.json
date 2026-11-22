@@ -1,0 +1,35 @@
+{
+  "module_id": "visual",
+  "version": "0.1.0",
+  "entities": [
+    {
+      "name": "visual_packs",
+      "key": ["id"],
+      "sync": true,
+      "assets": true,
+      "columns": {
+        "id": "TEXT",
+        "kind": "TEXT",
+        "name": "TEXT",
+        "manifest_json": "TEXT",
+        "preview_asset_id": "TEXT",
+        "created_at": "TEXT",
+        "updated_at": "TEXT",
+        "deleted_at": "TEXT",
+        "origin_device_id": "TEXT",
+        "origin_product_id": "TEXT"
+      }
+    }
+  ],
+  "migrations": [
+    {
+      "version": 1,
+      "sql": [
+        "CREATE TABLE visual_packs (id TEXT PRIMARY KEY, kind TEXT NOT NULL, name TEXT NOT NULL, manifest_json TEXT NOT NULL DEFAULT '{}', preview_asset_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT, origin_device_id TEXT NOT NULL, origin_product_id TEXT NOT NULL);"
+      ]
+    }
+  ],
+  "access": [
+    { "product_id": "yumeFriend", "permission": "write" }
+  ]
+}

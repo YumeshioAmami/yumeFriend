@@ -6,13 +6,16 @@ import {
   createSample,
   createSchedule,
   createThought,
+  createVisualPack,
   deleteDocument,
   deleteFile,
   deleteMemory,
   deleteSample,
   deleteSchedule,
   deleteThought,
+  deleteVisualPack,
   doneThought,
+  getLife,
   getStyle,
   listDocuments,
   listFiles,
@@ -20,9 +23,13 @@ import {
   listSamples,
   listSchedules,
   listThoughts,
+  listVisualPacks,
   moveFile,
+  patchFriend,
+  pauseLife,
   readFile,
   recallMemories,
+  resumeLife,
   rollbackStyle,
   saveStyle,
   searchDocuments,
@@ -36,10 +43,13 @@ import {
   type Document,
   type ExpressionSample,
   type FileItem,
+  type Friend,
+  type LifeState,
   type Memory,
   type Schedule,
   type SearchHit,
   type Thought,
+  type VisualPack,
 } from "./api";
 import { useApp, type Panel } from "./store";
 
@@ -52,6 +62,8 @@ const tabs: { id: Exclude<Panel, null>; label: string }[] = [
   { id: "search", label: "搜索" },
   { id: "screen", label: "看屏" },
   { id: "file", label: "文件" },
+  { id: "visual", label: "呈现" },
+  { id: "life", label: "生活" },
 ];
 
 function Drawer({
@@ -790,9 +802,240 @@ function FilePanel() {
   );
 }
 
+function parsePreview(manifestJson: string): string {
+  try {
+    const parsed = JSON.parse(manifestJson) as { preview_url?: string };
+    return parsed.preview_url ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function VisualPanel({ friend }: { friend: Friend }) {
+  const { setImmersive, loadFriends } = useApp();
+  const [packs, setPacks] = useState<VisualPack[]>([]);
+  const [kind, setKind] = useState("portrait");
+  const [name, setName] = useState("");
+  const [manifest, setManifest] = useState('{"preview_url":""}');
+  const [error, setError] = useState("");
+
+  const load = async () => {
+    try {
+      const result = await listVisualPacks();
+      setPacks(result.items);
+    } catch (reason) {
+      setError(String(reason));
+    }
+  };
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const selected = packs.find((pack) => pack.id === friend.visual_pack_id);
+  const preview =
+    selected?.preview_asset_id
+      ? assetUrl(selected.preview_asset_id)
+      : selected
+        ? parsePreview(selected.manifest_json)
+        : "";
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2">
+        <select
+          className="flex-1 rounded border border-stone-300 px-2 py-1.5 text-xs"
+          value={friend.visual_mode}
+          onChange={async (event) => {
+            await patchFriend(friend.id, { visual_mode: event.target.value });
+            await loadFriends();
+          }}
+        >
+          <option value="live2d">Live2D</option>
+          <option value="portrait">立绘</option>
+          <option value="none">不显示</option>
+        </select>
+        <select
+          className="flex-1 rounded border border-stone-300 px-2 py-1.5 text-xs"
+          value={friend.visual_pack_id ?? ""}
+          onChange={async (event) => {
+            await patchFriend(friend.id, { visual_pack_id: event.target.value || null });
+            await loadFriends();
+          }}
+        >
+          <option value="">无外观包</option>
+          {packs.map((pack) => (
+            <option key={pack.id} value={pack.id}>
+              {pack.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="flex aspect-[3/4] max-h-72 items-center justify-center overflow-hidden rounded border border-stone-200 bg-stone-50">
+        {preview ? (
+          <img className="h-full w-full object-contain" src={preview} alt="外观预览" />
+        ) : (
+          <div className="text-5xl text-stone-300">{friend.name.slice(0, 1)}</div>
+        )}
+      </div>
+      <div className="flex gap-2">
+        <button
+          className="rounded bg-stone-800 px-3 py-1.5 text-xs text-white"
+          onClick={() => setImmersive(true)}
+        >
+          沉浸
+        </button>
+        <button
+          className="rounded border border-stone-300 px-3 py-1.5 text-xs text-stone-600"
+          onClick={() => window.yumeFriend?.openPet?.()}
+        >
+          桌宠
+        </button>
+      </div>
+      <div className="space-y-2 border-t border-stone-200 pt-3">
+        <div className="flex gap-2">
+          <select
+            className="w-24 rounded border border-stone-300 px-2 py-1.5 text-xs"
+            value={kind}
+            onChange={(event) => setKind(event.target.value)}
+          >
+            <option value="portrait">立绘</option>
+            <option value="live2d">Live2D</option>
+          </select>
+          <input
+            className="min-w-0 flex-1 rounded border border-stone-300 px-2 py-1.5 text-xs"
+            placeholder="名称"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+          />
+        </div>
+        <textarea
+          className="h-20 w-full resize-none rounded border border-stone-300 px-2 py-1.5 font-mono text-xs"
+          value={manifest}
+          onChange={(event) => setManifest(event.target.value)}
+        />
+        <button
+          className="rounded bg-stone-800 px-3 py-1.5 text-xs text-white"
+          onClick={async () => {
+            if (!name.trim()) return;
+            try {
+              await createVisualPack({ kind, name, manifest_json: manifest });
+              setName("");
+              await load();
+            } catch (reason) {
+              setError(String(reason));
+            }
+          }}
+        >
+          添加外观包
+        </button>
+      </div>
+      {error && <div className="text-xs text-red-600">{error}</div>}
+      <div className="space-y-1">
+        {packs.map((pack) => (
+          <div key={pack.id} className="flex items-center gap-2 rounded border border-stone-200 p-2">
+            <span className="min-w-0 flex-1 truncate text-xs text-stone-600">
+              {pack.kind} · {pack.name}
+            </span>
+            <button
+              className="text-xs text-red-500"
+              onClick={async () => {
+                await deleteVisualPack(pack.id);
+                await load();
+              }}
+            >
+              删除
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function LifePanel({ friend }: { friend: Friend }) {
+  const { loadFriends } = useApp();
+  const [life, setLife] = useState<LifeState | null>(null);
+  const [error, setError] = useState("");
+
+  const load = async () => {
+    try {
+      setLife(await getLife(friend.id));
+    } catch (reason) {
+      setError(String(reason));
+    }
+  };
+
+  useEffect(() => {
+    void load();
+  }, [friend.id]);
+
+  return (
+    <div className="space-y-4">
+      <label className="flex items-center gap-2 text-xs text-stone-600">
+        <input
+          type="checkbox"
+          checked={friend.life_enabled === 1}
+          onChange={async (event) => {
+            await patchFriend(friend.id, { life_enabled: event.target.checked ? 1 : 0 });
+            await loadFriends();
+          }}
+        />
+        开启生活线
+      </label>
+      <div className="flex gap-2">
+        <button
+          className="rounded border border-stone-300 px-3 py-1.5 text-xs text-stone-600"
+          onClick={async () => {
+            await pauseLife(friend.id);
+            await load();
+          }}
+        >
+          暂停
+        </button>
+        <button
+          className="rounded border border-stone-300 px-3 py-1.5 text-xs text-stone-600"
+          onClick={async () => {
+            await resumeLife(friend.id);
+            await load();
+          }}
+        >
+          恢复
+        </button>
+      </div>
+      {error && <div className="text-xs text-red-600">{error}</div>}
+      {life && (
+        <>
+          <div className="rounded bg-stone-50 p-2 text-xs text-stone-600">
+            最近观察：{life.friend_life.last_observation || "暂无"}
+          </div>
+          <div>
+            <div className="mb-1 text-xs text-stone-500">生活项目</div>
+            {life.projects.map((project) => (
+              <div key={project.id} className="text-xs text-stone-600">
+                {project.topic} · {project.status} · {project.step_count}
+              </div>
+            ))}
+          </div>
+          <div>
+            <div className="mb-1 text-xs text-stone-500">活动</div>
+            {life.activities.map((activity) => (
+              <div key={activity.id} className="mt-1 rounded border border-stone-200 p-2">
+                <div className="text-xs text-stone-800">{activity.title}</div>
+                <div className="mt-1 text-[11px] text-stone-500">{activity.summary}</div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function FeatureDrawer() {
-  const { panel, setPanel, selectedId } = useApp();
+  const { panel, setPanel, selectedId, friends } = useApp();
   if (!panel || !selectedId) return null;
+  const friend = friends.find((item) => item.id === selectedId);
   return (
     <Drawer title={tabs.find((tab) => tab.id === panel)?.label ?? ""} onClose={() => setPanel(null)}>
       <div className="mb-4 flex gap-1">
@@ -816,6 +1059,8 @@ export function FeatureDrawer() {
       {panel === "search" && <SearchPanel friendId={selectedId} />}
       {panel === "screen" && <ScreenPanel friendId={selectedId} />}
       {panel === "file" && <FilePanel />}
+      {panel === "visual" && friend && <VisualPanel friend={friend} />}
+      {panel === "life" && friend && <LifePanel friend={friend} />}
     </Drawer>
   );
 }

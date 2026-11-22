@@ -7,6 +7,9 @@ export type Friend = {
   personality: string;
   custom_instructions: string;
   created_at: string;
+  visual_mode?: string;
+  visual_pack_id?: string | null;
+  life_enabled?: number;
 };
 
 export type Message = {
@@ -89,6 +92,24 @@ export type FileItem = {
   path: string;
   is_dir: boolean;
   size: number;
+};
+
+export type VisualPack = {
+  id: string;
+  kind: string;
+  name: string;
+  manifest_json: string;
+  preview_asset_id?: string | null;
+};
+
+export type LifeState = {
+  friend_life: {
+    last_observation: string;
+    paused_by_chat: number;
+    paused_until?: string | null;
+  };
+  projects: Array<{ id: string; topic: string; status: string; step_count: number }>;
+  activities: Array<{ id: string; title: string; summary: string; started_at: string }>;
 };
 
 type ListResult<T> = { items: T[]; next_cursor: string | null };
@@ -382,4 +403,41 @@ export function drawImage(friendId: string, prompt: string): Promise<Message> {
     method: "POST",
     body: JSON.stringify({ prompt }),
   });
+}
+
+export function patchFriend(
+  friendId: string,
+  data: Record<string, unknown>,
+): Promise<Friend> {
+  return request(`/friends/${friendId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export function listVisualPacks(): Promise<ListResult<VisualPack>> {
+  return request("/visual-packs");
+}
+
+export function createVisualPack(data: Record<string, unknown>): Promise<VisualPack> {
+  return request("/visual-packs", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteVisualPack(packId: string): Promise<void> {
+  return request(`/visual-packs/${packId}`, { method: "DELETE" });
+}
+
+export function getLife(friendId: string): Promise<LifeState> {
+  return request(`/friends/${friendId}/life`);
+}
+
+export function pauseLife(friendId: string): Promise<void> {
+  return request(`/friends/${friendId}/life/pause`, { method: "POST" });
+}
+
+export function resumeLife(friendId: string): Promise<void> {
+  return request(`/friends/${friendId}/life/resume`, { method: "POST" });
 }

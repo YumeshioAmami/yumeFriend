@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { app, BrowserWindow, dialog } from "electron";
+import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import { fileURLToPath } from "node:url";
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
@@ -11,6 +11,7 @@ const repoRoot = path.resolve(appRoot, "..");
 const corePort = Number(process.env.YUMECORE_PORT ?? "47895");
 const apiPort = Number(process.env.YUMEFRIEND_PORT ?? "47891");
 const children: ChildProcess[] = [];
+let petWindow: BrowserWindow | null = null;
 
 function startServices(): void {
   const userData = path.join(repoRoot, "user_data");
@@ -90,6 +91,9 @@ function createWindow(): void {
       preload: path.join(currentDir, "preload.js"),
     },
   });
+  window.on("closed", () => {
+    petWindow?.close();
+  });
 
   const devUrl = process.env.VITE_DEV_SERVER_URL;
   if (devUrl) {
@@ -98,6 +102,42 @@ function createWindow(): void {
     void window.loadFile(path.join(currentDir, "../dist/index.html"));
   }
 }
+
+function createPetWindow(): void {
+  if (petWindow) {
+    petWindow.focus();
+    return;
+  }
+  petWindow = new BrowserWindow({
+    width: 220,
+    height: 240,
+    transparent: true,
+    frame: false,
+    resizable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    hasShadow: false,
+    webPreferences: {
+      preload: path.join(currentDir, "preload.js"),
+    },
+  });
+  petWindow.on("closed", () => {
+    petWindow = null;
+  });
+  const devUrl = process.env.VITE_DEV_SERVER_URL;
+  if (devUrl) {
+    void petWindow.loadURL(`${devUrl}?pet=1`);
+  } else {
+    void petWindow.loadFile(path.join(currentDir, "../dist/index.html"), {
+      query: { pet: "1" },
+    });
+  }
+}
+
+ipcMain.handle("pet:open", () => createPetWindow());
+ipcMain.handle("pet:close", (event) => {
+  BrowserWindow.fromWebContents(event.sender)?.close();
+});
 
 void app.whenReady().then(async () => {
   try {

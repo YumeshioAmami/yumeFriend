@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   assetUrl,
   drawImage,
+  listVisualPacks,
   synthesizeVoice,
   transcribeAudio,
   uploadAsset,
@@ -246,6 +247,8 @@ function Chat() {
             ["search", "搜索"],
             ["screen", "看屏"],
             ["file", "文件"],
+            ["visual", "呈现"],
+            ["life", "生活"],
           ].map(([id, label]) => (
             <button
               key={id}
@@ -260,7 +263,9 @@ function Chat() {
                     | "knowledge"
                     | "search"
                     | "screen"
-                    | "file",
+                    | "file"
+                    | "visual"
+                    | "life",
                 )
               }
             >
@@ -385,6 +390,66 @@ function Chat() {
   );
 }
 
+function ImmersiveOverlay() {
+  const { immersive, setImmersive, friends, selectedId, messages } = useApp();
+  const [preview, setPreview] = useState("");
+  const friend = friends.find((item) => item.id === selectedId);
+
+  useEffect(() => {
+    if (!immersive || !friend?.visual_pack_id) {
+      setPreview("");
+      return;
+    }
+    void listVisualPacks().then((result) => {
+      const pack = result.items.find((item) => item.id === friend.visual_pack_id);
+      if (!pack) return;
+      if (pack.preview_asset_id) {
+        setPreview(assetUrl(pack.preview_asset_id));
+        return;
+      }
+      try {
+        const manifest = JSON.parse(pack.manifest_json) as { preview_url?: string };
+        setPreview(manifest.preview_url ?? "");
+      } catch {
+        setPreview("");
+      }
+    });
+  }, [immersive, friend?.visual_pack_id]);
+
+  if (!immersive || !friend) return null;
+  return (
+    <div className="fixed inset-0 z-30 flex flex-col bg-stone-900 text-stone-100">
+      <div className="flex justify-end p-4">
+        <button
+          className="rounded border border-white/20 px-3 py-1 text-xs text-white/70"
+          onClick={() => setImmersive(false)}
+        >
+          退出沉浸
+        </button>
+      </div>
+      <div className="flex min-h-0 flex-1">
+        <div className="flex w-1/2 items-center justify-center">
+          {preview ? (
+            <img className="max-h-full max-w-full object-contain" src={preview} alt={friend.name} />
+          ) : (
+            <div className="text-[120px] text-white/20">{friend.name.slice(0, 1)}</div>
+          )}
+        </div>
+        <div className="flex w-1/2 flex-col justify-end p-8">
+          <div className="mb-4 text-xl">{friend.name}</div>
+          <div className="max-h-[60vh] space-y-3 overflow-y-auto">
+            {messages.slice(-8).map((message) => (
+              <div key={message.id} className="text-sm leading-7 text-white/80">
+                {message.content}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const {
     friends,
@@ -461,6 +526,7 @@ export default function App() {
       {error && !createOpen && <div className="px-5 py-2 text-xs text-red-600">{error}</div>}
       <CreateFriendModal />
       <SettingsModal />
+      <ImmersiveOverlay />
     </div>
   );
 }

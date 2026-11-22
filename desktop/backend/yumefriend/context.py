@@ -17,6 +17,7 @@ class PromptContext:
     thought: str = ""
     style: str = ""
     expression: str = ""
+    life: str = ""
 
 
 async def load_prompt_context(
@@ -65,6 +66,12 @@ async def load_prompt_context(
         "document_chunks",
         filter={"friend_id": friend_id},
         limit=500,
+    )
+    activities = await core.read(
+        "life",
+        "life_activities",
+        filter={"friend_id": friend_id},
+        limit=10,
     )
 
     now = datetime.now().astimezone()
@@ -120,6 +127,16 @@ async def load_prompt_context(
                 knowledge_lines.append(f"- {text[:400]}")
             if len(knowledge_lines) >= 4:
                 break
+    activity_items = sorted(
+        activities.get("items", []),
+        key=lambda item: item.get("started_at", ""),
+        reverse=True,
+    )
+    life_lines = [
+        f"- {item.get('title', '')}: {item.get('summary', '')}"
+        for item in activity_items[:3]
+        if item.get("summary")
+    ]
 
     return PromptContext(
         state=format_state((state.get("items") or [{}])[0]),
@@ -129,6 +146,7 @@ async def load_prompt_context(
         thought=thought_items[0].get("content", "") if thought_items else "",
         style=style_item.get("profile_json", ""),
         expression="\n".join(expression_lines),
+        life="\n".join(life_lines),
     )
 
 

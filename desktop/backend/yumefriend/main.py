@@ -23,9 +23,12 @@ from yumefriend.context import load_prompt_context
 from yumefriend.core import CoreClient
 from yumefriend.features import router
 from yumefriend.knowledge import router as knowledge_router
+from yumefriend.life import router as life_router
+from yumefriend.life_engine import life_step
 from yumefriend.media import attach_asset, message_with_assets
 from yumefriend.media import router as media_router
 from yumefriend.tools import router as tools_router
+from yumefriend.visual import router as visual_router
 
 
 class FriendDraft(BaseModel):
@@ -47,6 +50,18 @@ class SettingWrite(BaseModel):
     value_json: str
 
 
+class FriendPatch(BaseModel):
+    name: str | None = None
+    personality: str | None = None
+    custom_instructions: str | None = None
+    visual_mode: str | None = None
+    visual_pack_id: str | None = None
+    life_enabled: int | None = None
+    presence: int | None = None
+    voice_reply_enabled: int | None = None
+    temperature: float | None = None
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     core = CoreClient(os.getenv("YUMECORE_URL", "http://127.0.0.1:47895/core/v1"))
@@ -55,8 +70,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.streams = StreamRegistry()
     app.state.tasks = set()
     reminder = asyncio.create_task(reminder_loop(core))
+    life = asyncio.create_task(life_loop(core))
     yield
     reminder.cancel()
+    life.cancel()
     await core.close()
 
 
@@ -72,6 +89,8 @@ app.include_router(assets_router)
 app.include_router(knowledge_router)
 app.include_router(tools_router)
 app.include_router(media_router)
+app.include_router(visual_router)
+app.include_router(life_router)
 
 
 def get_core(request: Request) -> CoreClient:
@@ -136,6 +155,27 @@ async def check_reminders(core: CoreClient) -> None:
         )
 
 
+async def life_loop(core: CoreClient) -> None:
+    while True:
+        try:
+            settings = await core.read("settings", "settings", limit=200)
+            values = {}
+            for item in settings.get("items", []):
+                try:
+                    values[item["key"]] = json.loads(item["value_json"])
+                except (json.JSONDecodeError, KeyError):
+                    pass
+            minutes = float(values.get("life_heartbeat_minutes", 30))
+            friends = await core.read("friend", "friends", limit=200)
+            for friend in friends.get("items", []):
+                if int(friend.get("life_enabled", 0)) == 1:
+                    await life_step(core, friend)
+            await asyncio.sleep(max(10, int(minutes * 60)))
+        except Exception:  # noqa: BLE001
+            logger.exception("生活线循环失败")
+            await asyncio.sleep(30)
+
+
 @app.get("/api/v1/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -180,6 +220,41 @@ async def create_friend(request: Request, draft: FriendDraft) -> dict[str, Any]:
         {"friend_id": record["id"]},
     )
     return record
+
+
+@app.get("/api/v1/friends/{friend_id}")
+async def get_friend(request: Request, friend_id: str) -> dict[str, Any]:
+    result = await get_core(request).read(
+        "friend",
+        "friends",
+        filter={"id": friend_id},
+        limit=1,
+    )
+    if not result.get("items"):
+        raise HTTPException(status_code=404, detail="friend not found")
+    return result["items"][0]
+
+
+@app.patch("/api/v1/friends/{friend_id}")
+async def patch_friend(
+    request: Request,
+    friend_id: str,
+    draft: FriendPatch,
+) -> dict[str, Any]:
+    core = get_core(request)
+    result = await core.read("friend", "friends", filter={"id": friend_id}, limit=1)
+    if not result.get("items"):
+        raise HTTPException(status_code=404, detail="friend not found")
+    patch = draft.model_dump(exclude_unset=True, exclude_none=True)
+    if not patch:
+        return result["items"][0]
+    updated = await core.write(
+        "friend",
+        "friends",
+        "update",
+        {"id": friend_id, **patch},
+    )
+    return updated["record"]
 
 
 @app.get("/api/v1/friends/{friend_id}/messages")

@@ -30,6 +30,8 @@ export type Panel =
   | "search"
   | "screen"
   | "file"
+  | "visual"
+  | "life"
   | null;
 
 type AppState = {
@@ -43,6 +45,7 @@ type AppState = {
   createOpen: boolean;
   settingsOpen: boolean;
   panel: Panel;
+  immersive: boolean;
   loadFriends: () => Promise<void>;
   selectFriend: (friendId: string) => Promise<void>;
   createFriend: (name: string, personality: string) => Promise<void>;
@@ -52,6 +55,7 @@ type AppState = {
   setCreateOpen: (open: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
   setPanel: (panel: Panel) => void;
+  setImmersive: (open: boolean) => void;
   refreshMessages: () => Promise<void>;
 };
 
@@ -76,6 +80,7 @@ export const useApp = create<AppState>((set, get) => ({
   createOpen: false,
   settingsOpen: false,
   panel: null,
+  immersive: false,
 
   loadFriends: async () => {
     set({ loading: true, error: null });
@@ -215,6 +220,7 @@ export const useApp = create<AppState>((set, get) => ({
   setCreateOpen: (open) => set({ createOpen: open }),
   setSettingsOpen: (open) => set({ settingsOpen: open }),
   setPanel: (panel) => set({ panel }),
+  setImmersive: (open) => set({ immersive: open }),
 
   refreshMessages: async () => {
     const friendId = get().selectedId;

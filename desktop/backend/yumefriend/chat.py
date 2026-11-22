@@ -92,6 +92,7 @@ def build_prompt(
         section("你还惦记着的一件事", context.thought),
         section("你学到的说话方式", style_text(context.style)),
         section("你的表达样本", context.expression),
+        section("你最近在做的事", context.life),
         section("你现在的状态", context.state),
         f"# 现在\n当前时间：{now.strftime('%Y-%m-%d %H:%M')}（周{'一二三四五六日'[now.weekday()]}）",
     ]
