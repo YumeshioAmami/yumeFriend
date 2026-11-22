@@ -90,10 +90,12 @@ function createWindow(): void {
   const window = new BrowserWindow({
     width: 1200,
     height: 800,
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(currentDir, "preload.js"),
     },
   });
+  window.setMenuBarVisibility(false);
   window.on("closed", () => {
     petWindow?.close();
   });

@@ -79,10 +79,10 @@ function Drawer({
   children: ReactNode;
 }) {
   return (
-    <aside className="flex w-[420px] shrink-0 flex-col border-l border-[var(--border)] bg-[var(--panel)]">
-      <div className="flex h-14 items-center justify-between border-b border-stone-200 px-4">
-        <span className="text-sm font-medium text-stone-800">{title}</span>
-        <button className="text-xs text-stone-400 hover:text-stone-700" onClick={onClose}>
+    <aside className="drawer">
+      <div className="drawer-head">
+        <span className="text-sm font-medium text-[var(--text)]">{title}</span>
+        <button className="text-xs text-[var(--muted)] hover:text-[var(--text)]" onClick={onClose}>
           关闭
         </button>
       </div>

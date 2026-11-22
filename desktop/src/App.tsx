@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   assetUrl,
   drawImage,
@@ -12,31 +12,73 @@ import {
 import { FeatureDrawer } from "./FeatureDrawer";
 import { useApp, type Settings, type Theme } from "./store";
 
-function formatTime(value: string): string {
+function formatDateDivider(value: string): string {
   const date = new Date(value);
   const pad = (number: number) => String(number).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(
-    date.getHours(),
-  )}:${pad(date.getMinutes())}`;
+  return `${date.getMonth() + 1}月${date.getDate()}日 ${pad(date.getHours())}:${pad(
+    date.getMinutes(),
+  )}`;
 }
 
 function Avatar({ friend }: { friend: Friend }) {
   return (
-    <div className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full bg-stone-200 text-sm text-stone-600">
-      {friend.name.slice(0, 1)}
-    </div>
+    <div className="avatar !h-[28px] !w-[28px] !text-sm">{friend.name.slice(0, 1)}</div>
   );
 }
+
+function Icon({ children }: { children: ReactNode }) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {children}
+    </svg>
+  );
+}
+
+const icons = {
+  plus: <Icon><path d="M12 5v14M5 12h14" /></Icon>,
+  image: (
+    <Icon>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <circle cx="8.5" cy="9.5" r="1.5" />
+      <path d="m21 15-5-5L5 20" />
+    </Icon>
+  ),
+  mic: (
+    <Icon>
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+    </Icon>
+  ),
+  brush: (
+    <Icon>
+      <path d="m15 4 5 5-9 9H6v-5z" />
+      <path d="m13 6 5 5" />
+    </Icon>
+  ),
+};
 
 function MessageRow({ message, friend }: { message: Message; friend: Friend }) {
   const assistant = message.role === "assistant";
   const refreshMessages = useApp((state) => state.refreshMessages);
+  if (message.role === "system") {
+    return (
+      <div className="my-4 text-center text-[11px] text-[var(--muted)]">{message.content}</div>
+    );
+  }
   return (
-    <div className="flex gap-3 py-3">
-      {assistant ? <Avatar friend={friend} /> : <div className="w-[30px] shrink-0" />}
-      <div className="min-w-0 flex-1">
-        <div className="mb-1 text-[11px] text-stone-400">{formatTime(message.created_at)}</div>
-        <div className="whitespace-pre-wrap text-[14px] leading-7 text-stone-800">
+    <div className={`msg-row ${assistant ? "assistant" : "user"}`}>
+      {assistant && <Avatar friend={friend} />}
+      <div className="msg-content">
+        <div>
           {message.content}
           {message.status === "streaming" && <span className="ml-1 animate-pulse">▍</span>}
         </div>
@@ -77,9 +119,9 @@ function CreateFriendModal() {
 
   if (!createOpen) return null;
   return (
-    <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/20">
+    <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/15">
       <form
-        className="w-[460px] rounded-lg bg-[var(--panel)] p-5 shadow-xl"
+        className="modal-card w-[460px]"
         onSubmit={(event) => {
           event.preventDefault();
           if (!name.trim()) return;
@@ -129,20 +171,39 @@ function ThemeMenu() {
   ];
   return (
     <div className="relative">
-      <button
-        className="rounded px-2 py-1 text-lg text-stone-500 hover:bg-stone-100"
-        onClick={() => setOpen((current) => !current)}
-      >
-        ⋯
+      <button className="theme-dots" onClick={() => setOpen((current) => !current)}>
+        <span className="theme-dot" style={{ background: "var(--accent)" }} />
+        <span className="theme-dot" style={{ background: "#748d6b" }} />
+        <span className="theme-dot" style={{ background: "#3a332d" }} />
       </button>
       {open && (
-        <div className="absolute right-0 top-10 z-40 w-44 rounded-lg border border-stone-200 bg-white p-3 shadow-xl">
-          <div className="mb-2 flex gap-2">
+        <div className="theme-popover">
+          <div className="mb-3 text-[11px] text-[var(--muted)]">主题颜色</div>
+          <div className="grid grid-cols-4 gap-1">
+            {colors.map((color) => (
+              <button
+                key={color.id}
+                className={`theme-card ${theme.color === color.id ? "active" : ""}`}
+                onClick={() => void saveTheme({ ...theme, color: color.id })}
+              >
+                <span
+                  className="theme-swatch"
+                  style={{
+                    background: `linear-gradient(135deg, var(--panel) 45%, ${color.dot} 46%)`,
+                  }}
+                />
+                {color.label}
+              </button>
+            ))}
+          </div>
+          <div className="mt-3 flex gap-2">
             {(["light", "dark"] as const).map((mode) => (
               <button
                 key={mode}
-                className={`flex-1 rounded px-2 py-1 text-xs ${
-                  theme.mode === mode ? "bg-stone-800 text-white" : "bg-stone-100 text-stone-600"
+                className={`flex-1 rounded px-2 py-1.5 text-xs ${
+                  theme.mode === mode
+                    ? "bg-[var(--accent-soft)] text-[var(--text)]"
+                    : "text-[var(--muted)]"
                 }`}
                 onClick={() => void saveTheme({ ...theme, mode })}
               >
@@ -150,18 +211,10 @@ function ThemeMenu() {
               </button>
             ))}
           </div>
-          {colors.map((color) => (
-            <button
-              key={color.id}
-              className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs ${
-                theme.color === color.id ? "bg-stone-100 text-stone-900" : "text-stone-600"
-              }`}
-              onClick={() => void saveTheme({ ...theme, color: color.id })}
-            >
-              <span className="h-3 w-3 rounded-full" style={{ background: color.dot }} />
-              {color.label}
-            </button>
-          ))}
+          <div className="mt-2 border-t border-[var(--border)] pt-2 text-[11px] text-[var(--muted)]">
+            当前：{theme.mode === "light" ? "浅色" : "深色"} ·{" "}
+            {colors.find((color) => color.id === theme.color)?.label}
+          </div>
         </div>
       )}
     </div>
@@ -187,9 +240,9 @@ function SettingsModal() {
 
   if (!settingsOpen) return null;
   return (
-    <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/20">
+    <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/15">
       <form
-        className="max-h-[85vh] w-[560px] overflow-y-auto rounded-lg bg-[var(--panel)] p-5 shadow-xl"
+        className="modal-card max-h-[85vh] w-[560px] overflow-y-auto"
         onSubmit={(event) => {
           event.preventDefault();
           void saveSettings(draft);
@@ -358,13 +411,13 @@ function Chat() {
   }
 
   return (
-    <section className="flex min-w-0 flex-1 flex-col">
-      <div className="flex h-16 items-center justify-between border-b border-stone-200 px-6">
+    <section className="chat-main">
+      <div className="chat-head">
         <div>
-          <div className="text-[15px] font-medium text-stone-900">{friend.name}</div>
-          <div className="mt-0.5 text-[11px] text-stone-400">在线</div>
+          <div className="chat-name">{friend.name}</div>
+          <div className="mt-1 text-[11px] text-[var(--muted)]">现在在线 · 想聊点什么</div>
         </div>
-        <div className="flex gap-1">
+        <div className="flex items-center">
           {[
             ["memory", "记忆"],
             ["schedule", "日程"],
@@ -378,41 +431,50 @@ function Chat() {
             ["life", "生活"],
           ]
             .filter(([id]) => features[id] !== false)
-            .map(([id, label]) => (
-            <button
-              key={id}
-              className="rounded px-2 py-1 text-xs text-stone-500 hover:bg-stone-100"
-              onClick={() =>
-                setPanel(
-                  id as
-                    | "memory"
-                    | "schedule"
-                    | "thought"
-                    | "style"
-                    | "knowledge"
-                    | "search"
-                    | "screen"
-                    | "file"
-                    | "visual"
-                    | "life",
-                )
-              }
-            >
-              {label}
-            </button>
+            .map(([id, label], index) => (
+              <span key={id} className="flex items-center">
+                {index > 0 && (
+                  <span className="px-1 text-[10px] text-[var(--muted)]">/</span>
+                )}
+                <button
+                  className="feature-link"
+                  onClick={() =>
+                    setPanel(
+                      id as
+                        | "memory"
+                        | "schedule"
+                        | "thought"
+                        | "style"
+                        | "knowledge"
+                        | "search"
+                        | "screen"
+                        | "file"
+                        | "visual"
+                        | "life",
+                    )
+                  }
+                >
+                  {label}
+                </button>
+              </span>
+            ))}
+        </div>
+      </div>
+      <div className="chat-scroll">
+        <div className="chat-inner">
+          {messages.length === 0 && (
+            <div className="mt-16 text-center text-sm text-[var(--muted)]">还没有消息</div>
+          )}
+          {messages.length > 0 && (
+            <div className="date-divider">{formatDateDivider(messages[0].created_at)}</div>
+          )}
+          {messages.map((message) => (
+            <MessageRow key={message.id} message={message} friend={friend} />
           ))}
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto px-8 py-4">
-        {messages.length === 0 && (
-          <div className="mt-16 text-center text-sm text-stone-400">还没有消息</div>
-        )}
-        {messages.map((message) => (
-          <MessageRow key={message.id} message={message} friend={friend} />
-        ))}
-      </div>
       {error && <div className="px-8 pb-2 text-[12px] text-red-600">{error}</div>}
-      <div className="border-t border-stone-200 p-4">
+      <div className="composer">
         {assetIds.length > 0 && (
           <div className="mb-2 flex gap-2">
             {assetIds.map((assetId) => (
@@ -425,9 +487,24 @@ function Chat() {
             ))}
           </div>
         )}
-        <div className="mb-2 flex gap-2 text-xs">
-          <label className="cursor-pointer rounded border border-stone-300 px-2 py-1 text-stone-600">
-            图片
+        <div className="composer-row">
+          <label className="icon-button cursor-pointer">
+            {icons.plus}
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={async (event) => {
+                const file = event.target.files?.[0];
+                if (!file) return;
+                const asset = await uploadAsset(file);
+                setAssetIds((current) => [...current, asset.id]);
+                event.target.value = "";
+              }}
+            />
+          </label>
+          <label className="icon-button cursor-pointer">
+            {icons.image}
             <input
               type="file"
               accept="image/*"
@@ -442,11 +519,7 @@ function Chat() {
             />
           </label>
           <button
-            className={`rounded border px-2 py-1 ${
-              recording
-                ? "border-red-300 text-red-500"
-                : "border-stone-300 text-stone-600"
-            }`}
+            className={`icon-button ${recording ? "!text-red-500" : ""}`}
             onClick={async () => {
               if (recording) {
                 recorderRef.current?.stop();
@@ -471,10 +544,10 @@ function Chat() {
               setRecording(true);
             }}
           >
-            {recording ? "停止" : "语音"}
+            {icons.mic}
           </button>
           <button
-            className="rounded border border-stone-300 px-2 py-1 text-stone-600"
+            className="icon-button"
             onClick={async () => {
               const prompt = window.prompt("画什么？");
               if (!prompt) return;
@@ -482,11 +555,10 @@ function Chat() {
               await refreshMessages();
             }}
           >
-            画图
+            {icons.brush}
           </button>
-        </div>
-        <form
-          className="flex items-end gap-2"
+          <form
+            className="flex min-w-0 flex-1 items-end"
           onSubmit={(event) => {
             event.preventDefault();
             if (!draft.trim()) return;
@@ -496,8 +568,9 @@ function Chat() {
           }}
         >
           <textarea
-            className="h-20 flex-1 resize-none rounded border border-stone-300 px-3 py-2 text-sm leading-6 outline-none focus:border-stone-500"
+            className="composer-input"
             placeholder="说点什么……"
+            rows={1}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => {
@@ -509,11 +582,12 @@ function Chat() {
           />
           <button
             disabled={sending || !draft.trim()}
-            className="h-9 rounded bg-stone-800 px-4 text-sm text-white disabled:bg-stone-300"
+            className="send-button disabled:opacity-40"
           >
             发送
           </button>
-        </form>
+          </form>
+        </div>
       </div>
     </section>
   );
@@ -612,49 +686,59 @@ export default function App() {
   }, [theme]);
 
   return (
-    <div className="flex h-screen flex-col bg-[var(--bg)] text-[var(--text)]">
-      <header className="flex h-14 items-center justify-between border-b border-[var(--border)] px-5">
-        <div className="text-[15px] font-medium">yumeFriend</div>
-        <div className="flex items-center gap-1">
-          <ThemeMenu />
-          <button
-            className="rounded px-3 py-1.5 text-sm text-stone-500 hover:bg-stone-100"
-            onClick={() => setSettingsOpen(true)}
-          >
-            设置
-          </button>
-        </div>
+    <div className="app-shell">
+      <header className="top-bar">
+        <div className="brand">yumeFriend</div>
+        <ThemeMenu />
       </header>
       <div className="flex min-h-0 flex-1">
-        <aside className="flex w-[260px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--panel-2)]">
-          <div className="flex items-center justify-between px-4 py-3">
-            <span className="text-xs text-stone-500">朋友</span>
-            <button
-              className="rounded px-2 py-1 text-xs text-stone-600 hover:bg-stone-200"
-              onClick={() => setCreateOpen(true)}
-            >
-              + 新建
-            </button>
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto px-2">
-            {loading && <div className="px-2 py-2 text-xs text-stone-400">加载中……</div>}
+        <aside className="sidebar">
+          <button className="create-friend" onClick={() => setCreateOpen(true)}>
+            ＋ 创建朋友
+          </button>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {loading && <div className="px-4 py-2 text-xs text-[var(--muted)]">加载中……</div>}
             {friends.map((friend) => (
               <button
                 key={friend.id}
-                className={`mb-1 flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm ${
-                  friend.id === selectedId
-                    ? "bg-[var(--panel)] text-[var(--text)] shadow-sm"
-                    : "text-stone-600 hover:bg-stone-200/60"
-                }`}
+                className={`friend-row ${friend.id === selectedId ? "active" : ""}`}
                 onClick={() => void selectFriend(friend.id)}
               >
                 <Avatar friend={friend} />
-                <span className="truncate">{friend.name}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[14px] text-[var(--text)]">
+                    {friend.name}
+                  </span>
+                  <span className="mt-0.5 block truncate text-[11px] text-[var(--muted)]">
+                    {friend.personality || "还没聊过"}
+                  </span>
+                </span>
+                <span className="self-start text-[10px] text-[var(--muted)]">
+                  {friend.created_at
+                    ? `${new Date(friend.created_at).getMonth() + 1}-${String(
+                        new Date(friend.created_at).getDate(),
+                      ).padStart(2, "0")}`
+                    : ""}
+                </span>
               </button>
             ))}
           </div>
-          <div className="border-t border-stone-200 px-4 py-3 text-[11px] text-stone-400">
-            阶段 3
+          <div className="flex gap-4 border-t border-[var(--border)] px-4 py-3 text-[11px] text-[var(--muted)]">
+            <button className="hover:text-[var(--accent)]" onClick={() => setSettingsOpen(true)}>
+              设置
+            </button>
+            <button
+              className="hover:text-[var(--accent)]"
+              onClick={() => {
+                if (document.fullscreenElement) {
+                  void document.exitFullscreen();
+                } else {
+                  void document.documentElement.requestFullscreen();
+                }
+              }}
+            >
+              全屏
+            </button>
           </div>
         </aside>
         <Chat />
