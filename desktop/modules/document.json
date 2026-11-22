@@ -1,0 +1,53 @@
+{
+  "module_id": "document",
+  "version": "0.1.0",
+  "entities": [
+    {
+      "name": "documents",
+      "key": ["id"],
+      "sync": true,
+      "assets": true,
+      "columns": {
+        "id": "TEXT",
+        "friend_id": "TEXT",
+        "name": "TEXT",
+        "kind": "TEXT",
+        "asset_id": "TEXT",
+        "chars": "INTEGER",
+        "text": "TEXT",
+        "status": "TEXT",
+        "error": "TEXT",
+        "created_at": "TEXT",
+        "updated_at": "TEXT",
+        "deleted_at": "TEXT",
+        "origin_device_id": "TEXT",
+        "origin_product_id": "TEXT"
+      }
+    },
+    {
+      "name": "document_chunks",
+      "key": ["document_id", "seq"],
+      "sync": true,
+      "assets": false,
+      "columns": {
+        "document_id": "TEXT",
+        "friend_id": "TEXT",
+        "seq": "INTEGER",
+        "text": "TEXT",
+        "created_at": "TEXT"
+      }
+    }
+  ],
+  "migrations": [
+    {
+      "version": 1,
+      "sql": [
+        "CREATE TABLE documents (id TEXT PRIMARY KEY, friend_id TEXT NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL, asset_id TEXT, chars INTEGER NOT NULL DEFAULT 0, text TEXT, status TEXT NOT NULL DEFAULT 'ready', error TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT, origin_device_id TEXT NOT NULL, origin_product_id TEXT NOT NULL);",
+        "CREATE TABLE document_chunks (document_id TEXT NOT NULL, friend_id TEXT NOT NULL, seq INTEGER NOT NULL, text TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (document_id, seq));"
+      ]
+    }
+  ],
+  "access": [
+    { "product_id": "yumeFriend", "permission": "write" }
+  ]
+}

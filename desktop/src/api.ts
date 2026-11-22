@@ -64,6 +64,31 @@ export type StyleProfile = {
   version: number;
 };
 
+export type Document = {
+  id: string;
+  friend_id: string;
+  name: string;
+  kind: string;
+  chars: number;
+  status: string;
+};
+
+export type SearchHit = {
+  title?: string;
+  url?: string;
+  snippet?: string;
+  text?: string;
+  document_id?: string;
+  seq?: number;
+};
+
+export type FileItem = {
+  name: string;
+  path: string;
+  is_dir: boolean;
+  size: number;
+};
+
 type ListResult<T> = { items: T[]; next_cursor: string | null };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -252,4 +277,76 @@ export function saveStyle(friendId: string, profileJson: string): Promise<StyleP
 
 export function rollbackStyle(friendId: string): Promise<StyleProfile> {
   return request(`/friends/${friendId}/style/rollback`, { method: "POST" });
+}
+
+export function listDocuments(friendId: string): Promise<ListResult<Document>> {
+  return request(`/friends/${friendId}/documents`);
+}
+
+export async function uploadDocument(friendId: string, file: File): Promise<Document> {
+  const form = new FormData();
+  form.append("file", file);
+  const response = await fetch(`${API_BASE}/friends/${friendId}/documents`, {
+    method: "POST",
+    body: form,
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return response.json() as Promise<Document>;
+}
+
+export function deleteDocument(documentId: string): Promise<void> {
+  return request(`/documents/${documentId}`, { method: "DELETE" });
+}
+
+export function searchDocuments(
+  friendId: string,
+  query: string,
+): Promise<{ items: SearchHit[] }> {
+  return request(`/friends/${friendId}/documents/search`, {
+    method: "POST",
+    body: JSON.stringify({ query, limit: 10 }),
+  });
+}
+
+export function searchWeb(friendId: string, query: string): Promise<{ items: SearchHit[] }> {
+  return request(`/friends/${friendId}/search`, {
+    method: "POST",
+    body: JSON.stringify({ query, limit: 5 }),
+  });
+}
+
+export function captureScreen(
+  friendId: string,
+): Promise<{ asset_id: string; description: string }> {
+  return request(`/friends/${friendId}/screen`, { method: "POST" });
+}
+
+export function assetUrl(assetId: string): string {
+  return `${API_BASE}/assets/${assetId}/content`;
+}
+
+export function listFiles(path = ""): Promise<{ items: FileItem[] }> {
+  return request(`/files?path=${encodeURIComponent(path)}`);
+}
+
+export function readFile(path: string): Promise<{ path: string; content: string }> {
+  return request(`/files/content?path=${encodeURIComponent(path)}`);
+}
+
+export function writeFile(path: string, content: string): Promise<void> {
+  return request("/files/content", {
+    method: "PUT",
+    body: JSON.stringify({ path, content }),
+  });
+}
+
+export function moveFile(src: string, dst: string): Promise<void> {
+  return request("/files/move", {
+    method: "POST",
+    body: JSON.stringify({ src, dst }),
+  });
+}
+
+export function deleteFile(path: string): Promise<void> {
+  return request(`/files?path=${encodeURIComponent(path)}`, { method: "DELETE" });
 }

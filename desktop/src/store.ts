@@ -17,7 +17,16 @@ export type Settings = {
   llm_model: string;
 };
 
-export type Panel = "memory" | "schedule" | "thought" | "style" | null;
+export type Panel =
+  | "memory"
+  | "schedule"
+  | "thought"
+  | "style"
+  | "knowledge"
+  | "search"
+  | "screen"
+  | "file"
+  | null;
 
 type AppState = {
   friends: Friend[];

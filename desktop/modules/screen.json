@@ -1,0 +1,12 @@
+{
+  "module_id": "screen",
+  "version": "0.1.0",
+  "entities": [],
+  "migrations": [],
+  "capabilities": [
+    { "name": "screen.capture", "input": "ScreenRequest", "output": "ScreenResult" }
+  ],
+  "access": [
+    { "product_id": "yumeFriend", "permission": "write" }
+  ]
+}

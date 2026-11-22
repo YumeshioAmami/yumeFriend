@@ -8,6 +8,11 @@ dependencies = [
   "pydantic>=2.8",
   "openai>=1.30",
   "loguru>=0.7",
+  "python-multipart>=0.0.20",
+  "pypdf>=5.0",
+  "python-docx>=1.1",
+  "pillow>=11.0",
+  "beautifulsoup4>=4.12",
 ]
 
 [dependency-groups]

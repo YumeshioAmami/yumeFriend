@@ -179,11 +179,27 @@ function Chat() {
             ["schedule", "日程"],
             ["thought", "想法"],
             ["style", "风格"],
+            ["knowledge", "知识"],
+            ["search", "搜索"],
+            ["screen", "看屏"],
+            ["file", "文件"],
           ].map(([id, label]) => (
             <button
               key={id}
               className="rounded px-2 py-1 text-xs text-stone-500 hover:bg-stone-100"
-              onClick={() => setPanel(id as "memory" | "schedule" | "thought" | "style")}
+              onClick={() =>
+                setPanel(
+                  id as
+                    | "memory"
+                    | "schedule"
+                    | "thought"
+                    | "style"
+                    | "knowledge"
+                    | "search"
+                    | "screen"
+                    | "file",
+                )
+              }
             >
               {label}
             </button>

@@ -1,0 +1,12 @@
+{
+  "module_id": "search",
+  "version": "0.1.0",
+  "entities": [],
+  "migrations": [],
+  "capabilities": [
+    { "name": "search.web", "input": "SearchRequest", "output": "SearchResult" }
+  ],
+  "access": [
+    { "product_id": "yumeFriend", "permission": "write" }
+  ]
+}

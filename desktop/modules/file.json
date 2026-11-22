@@ -1,0 +1,16 @@
+{
+  "module_id": "file",
+  "version": "0.1.0",
+  "entities": [],
+  "migrations": [],
+  "capabilities": [
+    { "name": "file.list", "input": "PathRequest", "output": "FileList" },
+    { "name": "file.read", "input": "PathRequest", "output": "FileContent" },
+    { "name": "file.write", "input": "FileWriteRequest", "output": "FileContent" },
+    { "name": "file.move", "input": "FileMoveRequest", "output": "FileList" },
+    { "name": "file.delete", "input": "PathRequest", "output": "FileList" }
+  ],
+  "access": [
+    { "product_id": "yumeFriend", "permission": "write" }
+  ]
+}

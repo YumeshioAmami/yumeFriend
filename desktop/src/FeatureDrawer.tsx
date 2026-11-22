@@ -1,29 +1,44 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import {
+  assetUrl,
+  captureScreen,
   createMemory,
   createSample,
   createSchedule,
   createThought,
+  deleteDocument,
+  deleteFile,
   deleteMemory,
   deleteSample,
   deleteSchedule,
   deleteThought,
   doneThought,
   getStyle,
+  listDocuments,
+  listFiles,
   listMemories,
   listSamples,
   listSchedules,
   listThoughts,
+  moveFile,
+  readFile,
   recallMemories,
   rollbackStyle,
   saveStyle,
+  searchDocuments,
+  searchWeb,
   settleSchedule,
+  uploadDocument,
   updateMemory,
   updateSchedule,
   updateThought,
+  writeFile,
+  type Document,
   type ExpressionSample,
+  type FileItem,
   type Memory,
   type Schedule,
+  type SearchHit,
   type Thought,
 } from "./api";
 import { useApp, type Panel } from "./store";
@@ -33,6 +48,10 @@ const tabs: { id: Exclude<Panel, null>; label: string }[] = [
   { id: "schedule", label: "日程" },
   { id: "thought", label: "想法" },
   { id: "style", label: "风格" },
+  { id: "knowledge", label: "知识" },
+  { id: "search", label: "搜索" },
+  { id: "screen", label: "看屏" },
+  { id: "file", label: "文件" },
 ];
 
 function Drawer({
@@ -505,6 +524,272 @@ function StylePanel({ friendId }: { friendId: string }) {
   );
 }
 
+function KnowledgePanel({ friendId }: { friendId: string }) {
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [query, setQuery] = useState("");
+  const [hits, setHits] = useState<SearchHit[]>([]);
+  const [error, setError] = useState("");
+
+  const load = async () => {
+    try {
+      const result = await listDocuments(friendId);
+      setDocuments(result.items);
+    } catch (reason) {
+      setError(String(reason));
+    }
+  };
+
+  useEffect(() => {
+    void load();
+  }, [friendId]);
+
+  return (
+    <div className="space-y-4">
+      <input
+        type="file"
+        className="w-full text-xs"
+        onChange={async (event) => {
+          const file = event.target.files?.[0];
+          if (!file) return;
+          try {
+            await uploadDocument(friendId, file);
+            await load();
+          } catch (reason) {
+            setError(String(reason));
+          } finally {
+            event.target.value = "";
+          }
+        }}
+      />
+      <div className="flex gap-2">
+        <input
+          className="min-w-0 flex-1 rounded border border-stone-300 px-2 py-1.5 text-xs"
+          placeholder="检索资料"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+        <button
+          className="rounded border border-stone-300 px-3 py-1.5 text-xs text-stone-600"
+          onClick={async () => {
+            const result = await searchDocuments(friendId, query);
+            setHits(result.items);
+          }}
+        >
+          检索
+        </button>
+      </div>
+      {hits.length > 0 && (
+        <div className="space-y-2 rounded bg-stone-50 p-2">
+          {hits.map((hit, index) => (
+            <div key={`${hit.document_id}-${hit.seq}-${index}`} className="text-xs text-stone-600">
+              {hit.text}
+            </div>
+          ))}
+        </div>
+      )}
+      {error && <div className="text-xs text-red-600">{error}</div>}
+      <div className="space-y-2">
+        {documents.map((document) => (
+          <div key={document.id} className="flex items-center gap-2 rounded border border-stone-200 p-2">
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm text-stone-800">{document.name}</div>
+              <div className="text-xs text-stone-400">
+                {document.kind} · {document.chars} 字
+              </div>
+            </div>
+            <button
+              className="text-xs text-red-500"
+              onClick={async () => {
+                await deleteDocument(document.id);
+                await load();
+              }}
+            >
+              删除
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SearchPanel({ friendId }: { friendId: string }) {
+  const [query, setQuery] = useState("");
+  const [items, setItems] = useState<SearchHit[]>([]);
+  const [error, setError] = useState("");
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2">
+        <input
+          className="min-w-0 flex-1 rounded border border-stone-300 px-2 py-1.5 text-xs"
+          placeholder="搜索网页"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+        <button
+          className="rounded bg-stone-800 px-3 py-1.5 text-xs text-white"
+          onClick={async () => {
+            try {
+              const result = await searchWeb(friendId, query);
+              setItems(result.items);
+            } catch (reason) {
+              setError(String(reason));
+            }
+          }}
+        >
+          搜索
+        </button>
+      </div>
+      {error && <div className="text-xs text-red-600">{error}</div>}
+      <div className="space-y-3">
+        {items.map((item) => (
+          <a
+            key={item.url}
+            className="block rounded border border-stone-200 p-2 hover:bg-stone-50"
+            href={item.url}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <div className="text-sm text-stone-800">{item.title}</div>
+            <div className="mt-1 text-xs text-stone-500">{item.snippet}</div>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ScreenPanel({ friendId }: { friendId: string }) {
+  const [assetId, setAssetId] = useState("");
+  return (
+    <div className="space-y-4">
+      <button
+        className="rounded bg-stone-800 px-3 py-1.5 text-xs text-white"
+        onClick={async () => {
+          const result = await captureScreen(friendId);
+          setAssetId(result.asset_id);
+        }}
+      >
+        截取当前屏幕
+      </button>
+      {assetId && (
+        <img
+          className="w-full rounded border border-stone-200"
+          src={assetUrl(assetId)}
+          alt="屏幕截图"
+        />
+      )}
+    </div>
+  );
+}
+
+function FilePanel() {
+  const [path, setPath] = useState("");
+  const [items, setItems] = useState<FileItem[]>([]);
+  const [selected, setSelected] = useState("");
+  const [content, setContent] = useState("");
+  const [error, setError] = useState("");
+
+  const load = async (nextPath = path) => {
+    try {
+      const result = await listFiles(nextPath);
+      setItems(result.items);
+    } catch (reason) {
+      setError(String(reason));
+    }
+  };
+
+  useEffect(() => {
+    void load("");
+  }, []);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2">
+        <input
+          className="min-w-0 flex-1 rounded border border-stone-300 px-2 py-1.5 text-xs"
+          placeholder="工作区路径"
+          value={path}
+          onChange={(event) => setPath(event.target.value)}
+        />
+        <button
+          className="rounded border border-stone-300 px-3 py-1.5 text-xs text-stone-600"
+          onClick={() => void load()}
+        >
+          打开
+        </button>
+      </div>
+      {error && <div className="text-xs text-red-600">{error}</div>}
+      <div className="space-y-1">
+        {items.map((item) => (
+          <button
+            key={item.path}
+            className="flex w-full items-center justify-between rounded px-2 py-1 text-left text-xs hover:bg-stone-100"
+            onClick={async () => {
+              if (item.is_dir) {
+                setPath(item.path);
+                await load(item.path);
+              } else {
+                setSelected(item.path);
+                const result = await readFile(item.path);
+                setContent(result.content);
+              }
+            }}
+          >
+            <span className="truncate text-stone-700">
+              {item.is_dir ? "📁 " : "📄 "}
+              {item.name}
+            </span>
+            <span className="text-stone-400">{item.size}</span>
+          </button>
+        ))}
+      </div>
+      {selected && (
+        <div className="space-y-2">
+          <div className="text-xs text-stone-500">{selected}</div>
+          <textarea
+            className="h-40 w-full resize-none rounded border border-stone-300 px-2 py-1.5 font-mono text-xs"
+            value={content}
+            onChange={(event) => setContent(event.target.value)}
+          />
+          <div className="flex gap-2">
+            <button
+              className="rounded bg-stone-800 px-3 py-1.5 text-xs text-white"
+              onClick={async () => {
+                await writeFile(selected, content);
+                await load(path);
+              }}
+            >
+              保存
+            </button>
+            <button
+              className="rounded border border-stone-300 px-3 py-1.5 text-xs text-stone-600"
+              onClick={async () => {
+                const destination = window.prompt("移动到", selected);
+                if (!destination) return;
+                await moveFile(selected, destination);
+                await load(path);
+              }}
+            >
+              移动
+            </button>
+            <button
+              className="rounded border border-red-200 px-3 py-1.5 text-xs text-red-500"
+              onClick={async () => {
+                await deleteFile(selected);
+                setSelected("");
+                await load(path);
+              }}
+            >
+              删除
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function FeatureDrawer() {
   const { panel, setPanel, selectedId } = useApp();
   if (!panel || !selectedId) return null;
@@ -527,6 +812,10 @@ export function FeatureDrawer() {
       {panel === "schedule" && <SchedulePanel friendId={selectedId} />}
       {panel === "thought" && <ThoughtPanel friendId={selectedId} />}
       {panel === "style" && <StylePanel friendId={selectedId} />}
+      {panel === "knowledge" && <KnowledgePanel friendId={selectedId} />}
+      {panel === "search" && <SearchPanel friendId={selectedId} />}
+      {panel === "screen" && <ScreenPanel friendId={selectedId} />}
+      {panel === "file" && <FilePanel />}
     </Drawer>
   );
 }

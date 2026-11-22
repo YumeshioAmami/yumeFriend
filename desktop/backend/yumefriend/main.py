@@ -16,10 +16,13 @@ from loguru import logger
 from pydantic import BaseModel
 
 from yumefriend import __version__
+from yumefriend.assets import router as assets_router
 from yumefriend.chat import StreamRegistry, generate_reply, load_model_config
 from yumefriend.context import load_prompt_context
 from yumefriend.core import CoreClient
 from yumefriend.features import router
+from yumefriend.knowledge import router as knowledge_router
+from yumefriend.tools import router as tools_router
 
 
 class FriendDraft(BaseModel):
@@ -62,6 +65,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(router)
+app.include_router(assets_router)
+app.include_router(knowledge_router)
+app.include_router(tools_router)
 
 
 def get_core(request: Request) -> CoreClient:
@@ -238,7 +244,7 @@ async def send_message(
             history_result.get("items", []),
             key=lambda item: item.get("created_at", ""),
         )
-        context = await load_prompt_context(core, friend_id)
+        context = await load_prompt_context(core, friend_id, draft.content)
         config = await load_model_config(core)
         streams: StreamRegistry = request.app.state.streams
         streams.create(assistant["id"])

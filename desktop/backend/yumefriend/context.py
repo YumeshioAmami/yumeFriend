@@ -12,13 +12,18 @@ from yumefriend.core import CoreClient
 class PromptContext:
     state: str = ""
     memories: str = ""
+    knowledge: str = ""
     schedules: str = ""
     thought: str = ""
     style: str = ""
     expression: str = ""
 
 
-async def load_prompt_context(core: CoreClient, friend_id: str) -> PromptContext:
+async def load_prompt_context(
+    core: CoreClient,
+    friend_id: str,
+    query: str = "",
+) -> PromptContext:
     memories = await core.read(
         "memory",
         "memories",
@@ -54,6 +59,12 @@ async def load_prompt_context(core: CoreClient, friend_id: str) -> PromptContext
         "friend_states",
         filter={"friend_id": friend_id},
         limit=1,
+    )
+    knowledge = await core.read(
+        "document",
+        "document_chunks",
+        filter={"friend_id": friend_id},
+        limit=500,
     )
 
     now = datetime.now().astimezone()
@@ -101,10 +112,19 @@ async def load_prompt_context(core: CoreClient, friend_id: str) -> PromptContext
     expression_lines = [
         f"- {item.get('text', '')}" for item in samples.get("items", [])
     ]
+    knowledge_lines = []
+    if query:
+        for item in knowledge.get("items", []):
+            text = item.get("text", "")
+            if query.casefold() in text.casefold():
+                knowledge_lines.append(f"- {text[:400]}")
+            if len(knowledge_lines) >= 4:
+                break
 
     return PromptContext(
         state=format_state((state.get("items") or [{}])[0]),
         memories="\n".join(memory_lines),
+        knowledge="\n".join(knowledge_lines),
         schedules="\n".join(schedule_lines),
         thought=thought_items[0].get("content", "") if thought_items else "",
         style=style_item.get("profile_json", ""),

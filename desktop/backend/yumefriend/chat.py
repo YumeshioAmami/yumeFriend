@@ -86,6 +86,7 @@ def build_prompt(
             "· 只输出说出口的话。"
         ),
         section("你记得的事", context.memories),
+        section("你手头的资料", context.knowledge),
         section("你记着的日程", context.schedules),
         section("你还惦记着的一件事", context.thought),
         section("你学到的说话方式", style_text(context.style)),
