@@ -19,6 +19,51 @@ export type Message = {
   created_at: string;
 };
 
+export type Memory = {
+  id: string;
+  friend_id: string;
+  kind: string;
+  layer: string;
+  content: string;
+  importance: number;
+  updated_at: string;
+};
+
+export type Schedule = {
+  id: string;
+  friend_id: string;
+  title: string;
+  nature: string;
+  date_local: string;
+  time_local: string | null;
+  advance_minutes: number;
+  state: string;
+  created_at: string;
+};
+
+export type Thought = {
+  id: string;
+  friend_id: string;
+  content: string;
+  kind: string;
+  state: string;
+  created_at: string;
+};
+
+export type ExpressionSample = {
+  id: string;
+  friend_id: string;
+  kind: string;
+  text: string;
+  situation: string;
+};
+
+export type StyleProfile = {
+  friend_id: string;
+  profile_json: string;
+  version: number;
+};
+
 type ListResult<T> = { items: T[]; next_cursor: string | null };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -28,6 +73,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!response.ok) {
     throw new Error(await response.text());
+  }
+  if (response.status === 204) {
+    return undefined as T;
   }
   return response.json() as Promise<T>;
 }
@@ -78,4 +126,130 @@ export async function saveSetting(key: string, value: string): Promise<void> {
       value_json: JSON.stringify(value),
     }),
   });
+}
+
+export function listMemories(friendId: string): Promise<ListResult<Memory>> {
+  return request(`/friends/${friendId}/memories`);
+}
+
+export function createMemory(friendId: string, data: Record<string, unknown>): Promise<Memory> {
+  return request(`/friends/${friendId}/memories`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateMemory(memoryId: string, data: Record<string, unknown>): Promise<Memory> {
+  return request(`/memories/${memoryId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteMemory(memoryId: string): Promise<void> {
+  return request(`/memories/${memoryId}`, { method: "DELETE" });
+}
+
+export function recallMemories(
+  friendId: string,
+  query: string,
+): Promise<ListResult<Memory>> {
+  return request(`/friends/${friendId}/memories/recall`, {
+    method: "POST",
+    body: JSON.stringify({ query, limit: 10 }),
+  });
+}
+
+export function listSchedules(friendId: string): Promise<ListResult<Schedule>> {
+  return request(`/friends/${friendId}/schedules`);
+}
+
+export function createSchedule(friendId: string, data: Record<string, unknown>): Promise<Schedule> {
+  return request(`/friends/${friendId}/schedules`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateSchedule(
+  scheduleId: string,
+  data: Record<string, unknown>,
+): Promise<Schedule> {
+  return request(`/schedules/${scheduleId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteSchedule(scheduleId: string): Promise<void> {
+  return request(`/schedules/${scheduleId}`, { method: "DELETE" });
+}
+
+export function settleSchedule(scheduleId: string, reason: string): Promise<Schedule> {
+  return request(`/schedules/${scheduleId}/settle`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export function listThoughts(friendId: string): Promise<ListResult<Thought>> {
+  return request(`/friends/${friendId}/thoughts`);
+}
+
+export function createThought(friendId: string, data: Record<string, unknown>): Promise<Thought> {
+  return request(`/friends/${friendId}/thoughts`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateThought(
+  thoughtId: string,
+  data: Record<string, unknown>,
+): Promise<Thought> {
+  return request(`/thoughts/${thoughtId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteThought(thoughtId: string): Promise<void> {
+  return request(`/thoughts/${thoughtId}`, { method: "DELETE" });
+}
+
+export function doneThought(thoughtId: string): Promise<Thought> {
+  return request(`/thoughts/${thoughtId}/done`, { method: "POST" });
+}
+
+export function listSamples(friendId: string): Promise<ListResult<ExpressionSample>> {
+  return request(`/friends/${friendId}/expression-samples`);
+}
+
+export function createSample(
+  friendId: string,
+  data: Record<string, unknown>,
+): Promise<ExpressionSample> {
+  return request(`/friends/${friendId}/expression-samples`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteSample(sampleId: string): Promise<void> {
+  return request(`/expression-samples/${sampleId}`, { method: "DELETE" });
+}
+
+export function getStyle(friendId: string): Promise<StyleProfile> {
+  return request(`/friends/${friendId}/style`);
+}
+
+export function saveStyle(friendId: string, profileJson: string): Promise<StyleProfile> {
+  return request(`/friends/${friendId}/style`, {
+    method: "PUT",
+    body: JSON.stringify({ profile_json: profileJson }),
+  });
+}
+
+export function rollbackStyle(friendId: string): Promise<StyleProfile> {
+  return request(`/friends/${friendId}/style/rollback`, { method: "POST" });
 }

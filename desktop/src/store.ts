@@ -17,6 +17,8 @@ export type Settings = {
   llm_model: string;
 };
 
+export type Panel = "memory" | "schedule" | "thought" | "style" | null;
+
 type AppState = {
   friends: Friend[];
   selectedId: string | null;
@@ -27,6 +29,7 @@ type AppState = {
   error: string | null;
   createOpen: boolean;
   settingsOpen: boolean;
+  panel: Panel;
   loadFriends: () => Promise<void>;
   selectFriend: (friendId: string) => Promise<void>;
   createFriend: (name: string, personality: string) => Promise<void>;
@@ -35,6 +38,8 @@ type AppState = {
   saveSettings: (settings: Settings) => Promise<void>;
   setCreateOpen: (open: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
+  setPanel: (panel: Panel) => void;
+  refreshMessages: () => Promise<void>;
 };
 
 const emptySettings: Settings = {
@@ -53,6 +58,7 @@ export const useApp = create<AppState>((set, get) => ({
   error: null,
   createOpen: false,
   settingsOpen: false,
+  panel: null,
 
   loadFriends: async () => {
     set({ loading: true, error: null });
@@ -187,4 +193,16 @@ export const useApp = create<AppState>((set, get) => ({
 
   setCreateOpen: (open) => set({ createOpen: open }),
   setSettingsOpen: (open) => set({ settingsOpen: open }),
+  setPanel: (panel) => set({ panel }),
+
+  refreshMessages: async () => {
+    const friendId = get().selectedId;
+    if (!friendId || get().sending) return;
+    try {
+      const result = await listMessages(friendId);
+      set({ messages: result.items });
+    } catch {
+      // keep current view
+    }
+  },
 }));

@@ -5,17 +5,21 @@ import json
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
 from typing import Any
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from loguru import logger
 from pydantic import BaseModel
 
 from yumefriend import __version__
 from yumefriend.chat import StreamRegistry, generate_reply, load_model_config
+from yumefriend.context import load_prompt_context
 from yumefriend.core import CoreClient
+from yumefriend.features import router
 
 
 class FriendDraft(BaseModel):
@@ -44,7 +48,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.core = core
     app.state.streams = StreamRegistry()
     app.state.tasks = set()
+    reminder = asyncio.create_task(reminder_loop(core))
     yield
+    reminder.cancel()
     await core.close()
 
 
@@ -55,10 +61,69 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(router)
 
 
 def get_core(request: Request) -> CoreClient:
     return request.app.state.core
+
+
+async def reminder_loop(core: CoreClient) -> None:
+    while True:
+        try:
+            await check_reminders(core)
+        except Exception:  # noqa: BLE001
+            logger.exception("提醒扫描失败")
+        await asyncio.sleep(30)
+
+
+async def check_reminders(core: CoreClient) -> None:
+    result = await core.read("schedule", "schedules", limit=500)
+    now = datetime.now()
+    for schedule in result.get("items", []):
+        if schedule.get("state") not in {"pending", "active"} or not schedule.get("time_local"):
+            continue
+        try:
+            due = datetime.fromisoformat(
+                f"{schedule['date_local']}T{schedule['time_local']}"
+            ) - timedelta(minutes=int(schedule.get("advance_minutes", 0)))
+        except ValueError:
+            continue
+        if due > now or due < now - timedelta(hours=24):
+            continue
+        events = await core.read(
+            "schedule",
+            "schedule_events",
+            filter={"schedule_id": schedule["id"]},
+            limit=50,
+        )
+        if any(item.get("action") == "remind" for item in events.get("items", [])):
+            continue
+        await core.write(
+            "chat",
+            "messages",
+            "create",
+            {
+                "friend_id": schedule["friend_id"],
+                "role": "system",
+                "kind": "notice",
+                "content": f"日程提醒：{schedule['title']}",
+                "proactive": 0,
+                "status": "completed",
+            },
+        )
+        await core.write(
+            "schedule",
+            "schedule_events",
+            "create",
+            {
+                "friend_id": schedule["friend_id"],
+                "schedule_id": schedule["id"],
+                "actor": "system",
+                "action": "remind",
+                "after_json": json.dumps(schedule, ensure_ascii=False),
+            },
+        )
 
 
 @app.get("/api/v1/health")
@@ -173,6 +238,7 @@ async def send_message(
             history_result.get("items", []),
             key=lambda item: item.get("created_at", ""),
         )
+        context = await load_prompt_context(core, friend_id)
         config = await load_model_config(core)
         streams: StreamRegistry = request.app.state.streams
         streams.create(assistant["id"])
@@ -196,6 +262,7 @@ async def send_message(
                     assistant["id"],
                     friend,
                     history,
+                    context,
                     config,
                 )
             )

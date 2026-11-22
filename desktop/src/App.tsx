@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Friend, Message } from "./api";
+import { FeatureDrawer } from "./FeatureDrawer";
 import { useApp, type Settings } from "./store";
 
 function formatTime(value: string): string {
@@ -153,7 +154,7 @@ function SettingsModal() {
 }
 
 function Chat() {
-  const { friends, selectedId, messages, sending, error, sendMessage } = useApp();
+  const { friends, selectedId, messages, sending, error, sendMessage, setPanel } = useApp();
   const [draft, setDraft] = useState("");
   const friend = friends.find((item) => item.id === selectedId);
 
@@ -167,10 +168,26 @@ function Chat() {
 
   return (
     <section className="flex min-w-0 flex-1 flex-col">
-      <div className="flex h-16 items-center border-b border-stone-200 px-6">
+      <div className="flex h-16 items-center justify-between border-b border-stone-200 px-6">
         <div>
           <div className="text-[15px] font-medium text-stone-900">{friend.name}</div>
           <div className="mt-0.5 text-[11px] text-stone-400">在线</div>
+        </div>
+        <div className="flex gap-1">
+          {[
+            ["memory", "记忆"],
+            ["schedule", "日程"],
+            ["thought", "想法"],
+            ["style", "风格"],
+          ].map(([id, label]) => (
+            <button
+              key={id}
+              className="rounded px-2 py-1 text-xs text-stone-500 hover:bg-stone-100"
+              onClick={() => setPanel(id as "memory" | "schedule" | "thought" | "style")}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       </div>
       <div className="flex-1 overflow-y-auto px-8 py-4">
@@ -228,12 +245,20 @@ export default function App() {
     loadFriends,
     loadSettings,
     selectFriend,
+    refreshMessages,
   } = useApp();
 
   useEffect(() => {
     void loadFriends();
     void loadSettings();
   }, [loadFriends, loadSettings]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      void refreshMessages();
+    }, 20_000);
+    return () => window.clearInterval(timer);
+  }, [refreshMessages]);
 
   return (
     <div className="flex h-screen flex-col bg-stone-50 text-stone-900">
@@ -279,6 +304,7 @@ export default function App() {
           </div>
         </aside>
         <Chat />
+        <FeatureDrawer />
       </div>
       {error && !createOpen && <div className="px-5 py-2 text-xs text-red-600">{error}</div>}
       <CreateFriendModal />

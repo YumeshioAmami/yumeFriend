@@ -1,0 +1,61 @@
+{
+  "module_id": "memory",
+  "version": "0.1.0",
+  "entities": [
+    {
+      "name": "memories",
+      "key": ["id"],
+      "sync": true,
+      "assets": false,
+      "columns": {
+        "id": "TEXT",
+        "friend_id": "TEXT",
+        "kind": "TEXT",
+        "layer": "TEXT",
+        "content": "TEXT",
+        "context": "TEXT",
+        "importance": "REAL",
+        "confidence": "REAL",
+        "occurred_at": "TEXT",
+        "source_message_ids_json": "TEXT",
+        "expires_at": "TEXT",
+        "last_recalled_at": "TEXT",
+        "created_at": "TEXT",
+        "updated_at": "TEXT",
+        "deleted_at": "TEXT",
+        "origin_device_id": "TEXT",
+        "origin_product_id": "TEXT"
+      }
+    },
+    {
+      "name": "memory_events",
+      "key": ["id"],
+      "sync": true,
+      "assets": false,
+      "columns": {
+        "id": "TEXT",
+        "friend_id": "TEXT",
+        "memory_id": "TEXT",
+        "actor": "TEXT",
+        "action": "TEXT",
+        "before_json": "TEXT",
+        "after_json": "TEXT",
+        "created_at": "TEXT",
+        "origin_device_id": "TEXT",
+        "origin_product_id": "TEXT"
+      }
+    }
+  ],
+  "migrations": [
+    {
+      "version": 1,
+      "sql": [
+        "CREATE TABLE memories (id TEXT PRIMARY KEY, friend_id TEXT NOT NULL, kind TEXT NOT NULL, layer TEXT NOT NULL, content TEXT NOT NULL, context TEXT, importance REAL NOT NULL DEFAULT 0.5, confidence REAL NOT NULL DEFAULT 0.5, occurred_at TEXT, source_message_ids_json TEXT NOT NULL DEFAULT '[]', expires_at TEXT, last_recalled_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT, origin_device_id TEXT NOT NULL, origin_product_id TEXT NOT NULL);",
+        "CREATE TABLE memory_events (id TEXT PRIMARY KEY, friend_id TEXT NOT NULL, memory_id TEXT, actor TEXT NOT NULL, action TEXT NOT NULL, before_json TEXT, after_json TEXT, created_at TEXT NOT NULL, origin_device_id TEXT NOT NULL, origin_product_id TEXT NOT NULL);"
+      ]
+    }
+  ],
+  "access": [
+    { "product_id": "yumeFriend", "permission": "write" }
+  ]
+}

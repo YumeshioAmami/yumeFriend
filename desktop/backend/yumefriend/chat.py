@@ -3,10 +3,12 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from openai import AsyncOpenAI
 
+from yumefriend.context import PromptContext, style_text
 from yumefriend.core import CoreClient
 
 
@@ -62,17 +64,36 @@ async def load_model_config(core: CoreClient) -> ModelConfig | None:
     return ModelConfig(base_url=base_url, api_key=api_key, model=model)
 
 
-def build_prompt(friend: dict[str, Any], history: list[dict[str, Any]]) -> list[dict[str, str]]:
-    system = (
-        f"你是「{friend['name']}」。\n\n"
-        f"# 你是谁\n{friend.get('personality', '')}\n\n"
-        f"# 你的说话习惯\n{friend.get('custom_instructions', '')}\n\n"
-        "# 你说话的规矩\n"
-        "· 像真人一样说话，用自然口气。\n"
-        "· 回复通常 2～4 句；对方要短就短。\n"
-        "· 先接住对方的话，再说自己的想法。\n"
-        "· 只输出说出口的话。"
-    )
+def build_prompt(
+    friend: dict[str, Any],
+    history: list[dict[str, Any]],
+    context: PromptContext,
+) -> list[dict[str, str]]:
+    now = datetime.now().astimezone()
+
+    def section(title: str, body: str) -> str:
+        return f"# {title}\n{body}" if body else ""
+
+    blocks = [
+        f"你是「{friend['name']}」。",
+        section("你是谁", friend.get("personality", "")),
+        section("你的说话习惯", friend.get("custom_instructions", "")),
+        (
+            "# 你说话的规矩\n"
+            "· 像真人一样说话，用自然口气。\n"
+            "· 回复通常 2～4 句；对方要短就短。\n"
+            "· 先接住对方的话，再说自己的想法。\n"
+            "· 只输出说出口的话。"
+        ),
+        section("你记得的事", context.memories),
+        section("你记着的日程", context.schedules),
+        section("你还惦记着的一件事", context.thought),
+        section("你学到的说话方式", style_text(context.style)),
+        section("你的表达样本", context.expression),
+        section("你现在的状态", context.state),
+        f"# 现在\n当前时间：{now.strftime('%Y-%m-%d %H:%M')}（周{'一二三四五六日'[now.weekday()]}）",
+    ]
+    system = "\n\n".join(block for block in blocks if block)
     messages = [{"role": "system", "content": system}]
     for message in history[-40:]:
         role = message.get("role")
@@ -88,6 +109,7 @@ async def generate_reply(
     message_id: str,
     friend: dict[str, Any],
     history: list[dict[str, Any]],
+    context: PromptContext,
     config: ModelConfig,
 ) -> None:
     streams.push(message_id, {"type": "start", "data": {"message_id": message_id}})
@@ -96,7 +118,7 @@ async def generate_reply(
     try:
         stream = await client.chat.completions.create(
             model=config.model,
-            messages=build_prompt(friend, history),
+            messages=build_prompt(friend, history, context),
             temperature=0.7,
             stream=True,
         )
@@ -114,6 +136,14 @@ async def generate_reply(
             {"id": message_id, "content": content, "status": "completed"},
         )
         streams.push(message_id, {"type": "end", "data": {"message": final.get("record")}})
+        await extract_memories(
+            core,
+            client,
+            config,
+            friend["id"],
+            history,
+            content,
+        )
     except Exception as error:  # noqa: BLE001
         await core.write(
             "chat",
@@ -128,3 +158,89 @@ async def generate_reply(
     finally:
         streams.finish(message_id)
         await client.close()
+
+
+async def extract_memories(
+    core: CoreClient,
+    client: AsyncOpenAI,
+    config: ModelConfig,
+    friend_id: str,
+    history: list[dict[str, Any]],
+    assistant_content: str,
+) -> None:
+    try:
+        existing = await core.read(
+            "memory",
+            "memories",
+            filter={"friend_id": friend_id},
+            limit=500,
+        )
+        known = {item.get("content", "") for item in existing.get("items", [])}
+        dialogue = "\n".join(
+            f"{item.get('role')}: {item.get('content', '')}"
+            for item in history[-20:]
+            if item.get("role") in {"user", "assistant"} and item.get("content")
+        )
+        dialogue += f"\nassistant: {assistant_content}"
+        response = await client.chat.completions.create(
+            model=config.model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "从对话里提取值得长期记住的事实、偏好或约定。"
+                        "只返回 JSON 数组，每项格式 "
+                        '{"content":"...","kind":"fact|preference|promise|experience|insight"}。'
+                        "没有可记的就返回 []。不要编造。"
+                    ),
+                },
+                {"role": "user", "content": dialogue},
+            ],
+            temperature=0.2,
+        )
+        text = (response.choices[0].message.content or "").strip()
+        start = text.find("[")
+        end = text.rfind("]")
+        if start < 0 or end < start:
+            return
+        items = json.loads(text[start : end + 1])
+        for item in items[:3]:
+            content = str(item.get("content", "")).strip()
+            if not content or content in known:
+                continue
+            kind = item.get("kind") if item.get("kind") in {
+                "fact",
+                "preference",
+                "promise",
+                "experience",
+                "insight",
+            } else "note"
+            memory = await core.write(
+                "memory",
+                "memories",
+                "create",
+                {
+                    "friend_id": friend_id,
+                    "kind": kind,
+                    "layer": "long_term",
+                    "content": content,
+                    "importance": 0.6,
+                    "confidence": 0.6,
+                    "source_message_ids_json": "[]",
+                },
+            )
+            await core.write(
+                "memory",
+                "memory_events",
+                "create",
+                {
+                    "friend_id": friend_id,
+                    "memory_id": memory["record"]["id"],
+                    "actor": "agent",
+                    "action": "create",
+                    "after_json": json.dumps(memory["record"], ensure_ascii=False),
+                },
+            )
+            known.add(content)
+    except Exception:  # noqa: BLE001
+        return

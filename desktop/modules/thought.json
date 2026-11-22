@@ -1,0 +1,40 @@
+{
+  "module_id": "thought",
+  "version": "0.1.0",
+  "entities": [
+    {
+      "name": "thoughts",
+      "key": ["id"],
+      "sync": true,
+      "assets": false,
+      "columns": {
+        "id": "TEXT",
+        "friend_id": "TEXT",
+        "content": "TEXT",
+        "kind": "TEXT",
+        "due_at": "TEXT",
+        "schedule_id": "TEXT",
+        "state": "TEXT",
+        "source": "TEXT",
+        "said_at": "TEXT",
+        "expires_at": "TEXT",
+        "created_at": "TEXT",
+        "updated_at": "TEXT",
+        "deleted_at": "TEXT",
+        "origin_device_id": "TEXT",
+        "origin_product_id": "TEXT"
+      }
+    }
+  ],
+  "migrations": [
+    {
+      "version": 1,
+      "sql": [
+        "CREATE TABLE thoughts (id TEXT PRIMARY KEY, friend_id TEXT NOT NULL, content TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'casual', due_at TEXT, schedule_id TEXT, state TEXT NOT NULL DEFAULT 'pending', source TEXT NOT NULL DEFAULT 'model', said_at TEXT, expires_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT, origin_device_id TEXT NOT NULL, origin_product_id TEXT NOT NULL);"
+      ]
+    }
+  ],
+  "access": [
+    { "product_id": "yumeFriend", "permission": "write" }
+  ]
+}
