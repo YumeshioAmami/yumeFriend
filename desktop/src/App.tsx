@@ -419,8 +419,8 @@ function Chat() {
   return (
     <section className="chat-main">
       <div className="chat-head">
-        <div>
-          <div className="chat-name">{friend.name}</div>
+        <div className="min-w-0">
+          <div className="chat-name truncate">{friend.name}</div>
           <div className="mt-1 text-[11px] text-[var(--muted)]">现在在线 · 想聊点什么</div>
         </div>
         <div className="feature-links">
