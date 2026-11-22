@@ -1,0 +1,33 @@
+{
+  "name": "yumefriend-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run build:web && npm run build:electron",
+    "build:web": "tsc -p tsconfig.json && vite build",
+    "build:electron": "tsc -p tsconfig.electron.json",
+    "lint": "oxlint src electron",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "zustand": "^5.1.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.3.0",
+    "electron": "^45.4.1",
+    "oxlint": "^1.94.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "~6.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.1"
+  }
+}
