@@ -15,6 +15,16 @@ from yumefriend.tools import bing_search
 
 
 async def life_step(core: CoreClient, friend: dict[str, Any]) -> None:
+    settings = await core.read("settings", "settings", limit=200)
+    values = {}
+    for item in settings.get("items", []):
+        try:
+            values[item["key"]] = json.loads(item["value_json"])
+        except (json.JSONDecodeError, KeyError):
+            pass
+    share_chance = float(values.get("life_share_chance", 0.35))
+    cooldown_minutes = float(values.get("life_cooldown_minutes", 120))
+
     life = await read_life(core, friend["id"])
     if life.get("paused_by_chat") and life.get("paused_until"):
         try:
@@ -102,12 +112,14 @@ async def life_step(core: CoreClient, friend: dict[str, Any]) -> None:
     await core.write("life", "friend_life", op, life_data)
 
     config = await load_model_config(core)
-    if config is None or random.random() > 0.35:
+    if config is None or random.random() > share_chance:
         return
     last_share = life.get("last_share_at")
     if last_share:
         try:
-            if datetime.fromisoformat(last_share) > datetime.now().astimezone() - timedelta(minutes=120):
+            if datetime.fromisoformat(last_share) > datetime.now().astimezone() - timedelta(
+                minutes=cooldown_minutes
+            ):
                 return
         except ValueError:
             pass

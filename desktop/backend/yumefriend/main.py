@@ -321,6 +321,23 @@ async def send_message(
     )
     for index, asset_id in enumerate(draft.asset_ids):
         await attach_asset(core, user["record"]["id"], asset_id, "image", index)
+    life = await core.read(
+        "life",
+        "friend_life",
+        filter={"friend_id": friend_id},
+        limit=1,
+    )
+    life_data = {
+        "friend_id": friend_id,
+        "paused_by_chat": 1,
+        "paused_until": (datetime.now().astimezone() + timedelta(minutes=30)).isoformat(),
+    }
+    await core.write(
+        "life",
+        "friend_life",
+        "update" if life.get("items") else "create",
+        life_data,
+    )
     image_urls = [asset_data_url(asset_id) for asset_id in draft.asset_ids]
     if draft.reply:
         reply = await core.write(
