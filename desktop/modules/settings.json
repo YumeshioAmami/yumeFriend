@@ -1,0 +1,33 @@
+{
+  "module_id": "settings",
+  "version": "0.1.0",
+  "entities": [
+    {
+      "name": "settings",
+      "key": ["scope", "owner_id", "key"],
+      "sync": false,
+      "assets": false,
+      "columns": {
+        "scope": "TEXT",
+        "owner_id": "TEXT",
+        "key": "TEXT",
+        "value_json": "TEXT",
+        "updated_at": "TEXT"
+      }
+    }
+  ],
+  "migrations": [
+    {
+      "version": 1,
+      "sql": [
+        "CREATE TABLE settings (scope TEXT NOT NULL, owner_id TEXT NOT NULL DEFAULT '', key TEXT NOT NULL, value_json TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (scope, owner_id, key));"
+      ]
+    }
+  ],
+  "access": [
+    {
+      "product_id": "yumeFriend",
+      "permission": "write"
+    }
+  ]
+}

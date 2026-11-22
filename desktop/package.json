@@ -6,7 +6,10 @@
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
+    "start": "electron .",
+    "prepare:core": "node scripts/prepare-core.mjs",
     "build": "npm run build:web && npm run build:electron",
+    "build:all": "npm run prepare:core && npm run build",
     "build:web": "tsc -p tsconfig.json && vite build",
     "build:electron": "tsc -p tsconfig.electron.json",
     "lint": "oxlint src electron",
