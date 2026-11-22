@@ -222,6 +222,19 @@ body {
   padding: 2px 1px;
 }
 
+.feature-links {
+  display: flex;
+  max-width: 62%;
+  align-items: center;
+  overflow-x: auto;
+  white-space: nowrap;
+  scrollbar-width: none;
+}
+
+.feature-links::-webkit-scrollbar {
+  display: none;
+}
+
 .feature-link:hover {
   color: var(--accent);
 }
@@ -300,6 +313,9 @@ body {
 }
 
 .icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: var(--muted);
   font-size: 15px;
   padding: 8px 4px;
@@ -383,8 +399,120 @@ body {
 }
 
 .modal-card {
+  max-width: calc(100vw - 40px);
   border-radius: 10px;
   background: var(--panel);
   padding: 20px;
   box-shadow: 0 24px 80px rgba(30, 20, 10, 0.22);
+}
+
+.drawer-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.drawer-tabs button {
+  border-radius: 5px;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.app-shell input:not([type="file"]),
+.app-shell textarea,
+.app-shell select,
+.drawer input:not([type="file"]),
+.drawer textarea,
+.drawer select {
+  border-color: var(--border);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 5px;
+}
+
+.app-shell input::placeholder,
+.app-shell textarea::placeholder,
+.drawer input::placeholder,
+.drawer textarea::placeholder {
+  color: var(--muted);
+}
+
+.app-shell select option,
+.drawer select option {
+  background: var(--panel);
+  color: var(--text);
+}
+
+.app-shell .text-stone-900,
+.app-shell .text-stone-800,
+.app-shell .text-stone-700,
+.drawer .text-stone-900,
+.drawer .text-stone-800,
+.drawer .text-stone-700 {
+  color: var(--text) !important;
+}
+
+.app-shell .text-stone-600,
+.app-shell .text-stone-500,
+.app-shell .text-stone-400,
+.drawer .text-stone-600,
+.drawer .text-stone-500,
+.drawer .text-stone-400 {
+  color: var(--muted) !important;
+}
+
+.app-shell .border-stone-200,
+.app-shell .border-stone-300,
+.drawer .border-stone-200,
+.drawer .border-stone-300 {
+  border-color: var(--border) !important;
+}
+
+.app-shell .bg-white,
+.drawer .bg-white {
+  background: var(--panel) !important;
+}
+
+.app-shell .bg-stone-50,
+.app-shell .bg-stone-100,
+.drawer .bg-stone-50,
+.drawer .bg-stone-100 {
+  background: var(--panel-2) !important;
+}
+
+.app-shell .bg-stone-800,
+.drawer .bg-stone-800 {
+  background: var(--accent) !important;
+  color: #fff !important;
+}
+
+.app-shell .bg-stone-200,
+.drawer .bg-stone-200 {
+  background: var(--panel-2) !important;
+}
+
+.app-shell .text-red-500,
+.app-shell .text-red-600,
+.drawer .text-red-500,
+.drawer .text-red-600 {
+  color: color-mix(in srgb, var(--accent) 82%, #d22 18%) !important;
+}
+
+.app-shell .border-red-200,
+.drawer .border-red-200 {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border) 70%) !important;
+}
+
+@media (max-width: 900px) {
+  .sidebar {
+    width: 220px;
+  }
+
+  .drawer {
+    width: 360px;
+  }
+
+  .feature-links {
+    max-width: 52%;
+  }
 }

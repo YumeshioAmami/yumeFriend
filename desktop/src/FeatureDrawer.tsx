@@ -1078,7 +1078,7 @@ export function FeatureDrawer() {
   const visibleTabs = tabs.filter((tab) => tab.id === "logs" || features[tab.id] !== false);
   return (
     <Drawer title={tabs.find((tab) => tab.id === panel)?.label ?? ""} onClose={() => setPanel(null)}>
-      <div className="mb-4 flex gap-1">
+      <div className="drawer-tabs mb-4">
         {visibleTabs.map((tab) => (
           <button
             key={tab.id}

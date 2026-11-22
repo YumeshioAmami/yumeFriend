@@ -184,7 +184,10 @@ function ThemeMenu() {
               <button
                 key={color.id}
                 className={`theme-card ${theme.color === color.id ? "active" : ""}`}
-                onClick={() => void saveTheme({ ...theme, color: color.id })}
+                onClick={() => {
+                  void saveTheme({ ...theme, color: color.id });
+                  setOpen(false);
+                }}
               >
                 <span
                   className="theme-swatch"
@@ -205,7 +208,10 @@ function ThemeMenu() {
                     ? "bg-[var(--accent-soft)] text-[var(--text)]"
                     : "text-[var(--muted)]"
                 }`}
-                onClick={() => void saveTheme({ ...theme, mode })}
+                onClick={() => {
+                  void saveTheme({ ...theme, mode });
+                  setOpen(false);
+                }}
               >
                 {mode === "light" ? "浅色" : "深色"}
               </button>
@@ -417,7 +423,7 @@ function Chat() {
           <div className="chat-name">{friend.name}</div>
           <div className="mt-1 text-[11px] text-[var(--muted)]">现在在线 · 想聊点什么</div>
         </div>
-        <div className="flex items-center">
+        <div className="feature-links">
           {[
             ["memory", "记忆"],
             ["schedule", "日程"],
@@ -662,6 +668,7 @@ export default function App() {
     createOpen,
     setCreateOpen,
     setSettingsOpen,
+    setPanel,
     loadFriends,
     loadSettings,
     selectFriend,
@@ -724,7 +731,13 @@ export default function App() {
             ))}
           </div>
           <div className="flex gap-4 border-t border-[var(--border)] px-4 py-3 text-[11px] text-[var(--muted)]">
-            <button className="hover:text-[var(--accent)]" onClick={() => setSettingsOpen(true)}>
+            <button
+              className="hover:text-[var(--accent)]"
+              onClick={() => {
+                setPanel(null);
+                setSettingsOpen(true);
+              }}
+            >
               设置
             </button>
             <button
