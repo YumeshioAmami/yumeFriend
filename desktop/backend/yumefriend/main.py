@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
@@ -163,6 +164,7 @@ async def check_reminders(core: CoreClient) -> None:
 
 
 async def life_loop(core: CoreClient) -> None:
+    last_run = 0.0
     while True:
         try:
             settings = await core.read("settings", "settings", limit=200)
@@ -173,11 +175,15 @@ async def life_loop(core: CoreClient) -> None:
                 except (json.JSONDecodeError, KeyError):
                     pass
             minutes = float(values.get("life_heartbeat_minutes", 30))
-            friends = await core.read("friend", "friends", limit=200)
-            for friend in friends.get("items", []):
-                if int(friend.get("life_enabled", 0)) == 1:
-                    await life_step(core, friend)
-            await asyncio.sleep(max(10, int(minutes * 60)))
+            interval = max(10, int(minutes * 60))
+            now = time.monotonic()
+            if now - last_run >= interval:
+                friends = await core.read("friend", "friends", limit=200)
+                for friend in friends.get("items", []):
+                    if int(friend.get("life_enabled", 0)) == 1:
+                        await life_step(core, friend)
+                last_run = now
+            await asyncio.sleep(10)
         except Exception:  # noqa: BLE001
             logger.exception("生活线循环失败")
             await asyncio.sleep(30)
