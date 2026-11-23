@@ -55,19 +55,19 @@ import {
 } from "./api";
 import { useApp, type Panel } from "./store";
 
-const tabs: { id: Exclude<Panel, null>; label: string }[] = [
-  { id: "memory", label: "记忆" },
-  { id: "schedule", label: "日程" },
-  { id: "thought", label: "想法" },
-  { id: "style", label: "风格" },
-  { id: "knowledge", label: "知识" },
-  { id: "search", label: "搜索" },
-  { id: "screen", label: "看屏" },
-  { id: "file", label: "文件" },
-  { id: "visual", label: "呈现" },
-  { id: "life", label: "生活" },
-  { id: "logs", label: "日志" },
-];
+const panelTitles: Record<Exclude<Panel, null>, string> = {
+  memory: "记忆",
+  schedule: "日程",
+  thought: "想法",
+  style: "风格",
+  knowledge: "知识",
+  search: "搜索",
+  screen: "看屏",
+  file: "文件",
+  visual: "呈现",
+  life: "生活",
+  logs: "日志",
+};
 
 function Drawer({
   title,
@@ -1071,26 +1071,12 @@ function LogPanel() {
 }
 
 export function FeatureDrawer() {
-  const { panel, setPanel, selectedId, friends, features } = useApp();
+  const { panel, setPanel, selectedId, friends } = useApp();
   if (!panel || (panel !== "logs" && !selectedId)) return null;
   const friendId = selectedId ?? "";
   const friend = friends.find((item) => item.id === selectedId);
-  const visibleTabs = tabs.filter((tab) => tab.id === "logs" || features[tab.id] !== false);
   return (
-    <Drawer title={tabs.find((tab) => tab.id === panel)?.label ?? ""} onClose={() => setPanel(null)}>
-      <div className="drawer-tabs mb-4">
-        {visibleTabs.map((tab) => (
-          <button
-            key={tab.id}
-            className={`rounded px-2 py-1 text-xs ${
-              panel === tab.id ? "bg-stone-800 text-white" : "text-stone-500 hover:bg-stone-100"
-            }`}
-            onClick={() => setPanel(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+    <Drawer title={panelTitles[panel]} onClose={() => setPanel(null)}>
       {panel === "memory" && <MemoryPanel friendId={friendId} />}
       {panel === "schedule" && <SchedulePanel friendId={friendId} />}
       {panel === "thought" && <ThoughtPanel friendId={friendId} />}

@@ -139,6 +139,16 @@ body {
   letter-spacing: 0.02em;
 }
 
+.top-icon {
+  color: var(--muted);
+  font-size: 15px;
+  padding: 4px 6px;
+}
+
+.top-icon:hover {
+  color: var(--accent);
+}
+
 .sidebar {
   display: flex;
   width: 264px;
@@ -247,8 +257,8 @@ body {
 
 .chat-inner {
   margin: 0 auto;
-  width: min(900px, 100%);
-  padding: 0 30px;
+  width: min(1280px, 100%);
+  padding: 0 clamp(24px, 4vw, 64px);
 }
 
 .date-divider {
@@ -269,7 +279,7 @@ body {
 }
 
 .msg-content {
-  max-width: 76%;
+  max-width: 70%;
   padding: 2px 14px;
   font-size: 14px;
   line-height: 1.95;
@@ -287,7 +297,7 @@ body {
 
 .composer {
   border-top: 1px solid var(--border);
-  padding: 10px 28px 14px;
+  padding: 8px clamp(24px, 4vw, 64px) 12px;
 }
 
 .composer-row {
@@ -297,12 +307,12 @@ body {
 }
 
 .composer-input {
-  min-height: 46px;
+  min-height: 38px;
   flex: 1;
   resize: none;
   border: 0;
   background: transparent;
-  padding: 10px 0;
+  padding: 7px 0;
   color: var(--text);
   outline: none;
   font-size: 14px;
@@ -496,6 +506,13 @@ body {
 .drawer .text-red-500,
 .drawer .text-red-600 {
   color: color-mix(in srgb, var(--accent) 82%, #d22 18%) !important;
+}
+
+.app-shell .composer-input {
+  min-height: 38px;
+  border: 0 !important;
+  background: transparent !important;
+  padding: 7px 0;
 }
 
 .app-shell .border-red-200,

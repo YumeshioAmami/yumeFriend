@@ -660,6 +660,7 @@ function ImmersiveOverlay() {
 }
 
 export default function App() {
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const {
     friends,
     selectedId,
@@ -695,11 +696,20 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="top-bar">
-        <div className="brand">yumeFriend</div>
+        <div className="flex items-center gap-2">
+          <button
+            className="top-icon"
+            title={sidebarOpen ? "收起朋友栏" : "展开朋友栏"}
+            onClick={() => setSidebarOpen((current) => !current)}
+          >
+            ☰
+          </button>
+          <div className="brand">yumeFriend</div>
+        </div>
         <ThemeMenu />
       </header>
       <div className="flex min-h-0 flex-1">
-        <aside className="sidebar">
+        {sidebarOpen && <aside className="sidebar">
           <button className="create-friend" onClick={() => setCreateOpen(true)}>
             ＋ 创建朋友
           </button>
@@ -753,7 +763,7 @@ export default function App() {
               全屏
             </button>
           </div>
-        </aside>
+        </aside>}
         <Chat />
         <FeatureDrawer />
       </div>
