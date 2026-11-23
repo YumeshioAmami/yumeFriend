@@ -424,19 +424,14 @@ function Chat() {
           <div className="mt-1 text-[11px] text-[var(--muted)]">现在在线 · 想聊点什么</div>
         </div>
         <div className="feature-links">
-          {[
-            ["memory", "记忆"],
-            ["schedule", "日程"],
-            ["thought", "想法"],
-            ["style", "风格"],
-            ["knowledge", "知识"],
-            ["search", "搜索"],
-            ["screen", "看屏"],
-            ["file", "文件"],
-            ["visual", "呈现"],
-            ["life", "生活"],
-          ]
-            .filter(([id]) => features[id] !== false)
+          {([
+            ["persona", "人格", ["friend", "expression", "visual"]],
+            ["memory", "记忆", ["memory"]],
+            ["schedule", "日程", ["schedule", "thought"]],
+            ["knowledge", "知识", ["document", "file"]],
+            ["life", "生活", ["life"]],
+          ] as const)
+            .filter(([, , keys]) => keys.some((key) => features[key] !== false))
             .map(([id, label], index) => (
               <span key={id} className="flex items-center">
                 {index > 0 && (
@@ -445,19 +440,7 @@ function Chat() {
                 <button
                   className="feature-link"
                   onClick={() =>
-                    setPanel(
-                      id as
-                        | "memory"
-                        | "schedule"
-                        | "thought"
-                        | "style"
-                        | "knowledge"
-                        | "search"
-                        | "screen"
-                        | "file"
-                        | "visual"
-                        | "life",
-                    )
+                    setPanel(id as "persona" | "memory" | "schedule" | "knowledge" | "life")
                   }
                 >
                   {label}

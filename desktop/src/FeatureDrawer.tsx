@@ -1,7 +1,6 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import {
   assetUrl,
-  captureScreen,
   createMemory,
   createSample,
   createSchedule,
@@ -35,7 +34,6 @@ import {
   rollbackStyle,
   saveStyle,
   searchDocuments,
-  searchWeb,
   settleSchedule,
   uploadDocument,
   updateMemory,
@@ -58,14 +56,9 @@ import { useApp, type Panel } from "./store";
 const panelTitles: Record<Exclude<Panel, null>, string> = {
   memory: "记忆",
   schedule: "日程",
-  thought: "想法",
-  style: "风格",
   knowledge: "知识",
-  search: "搜索",
-  screen: "看屏",
-  file: "文件",
-  visual: "呈现",
   life: "生活",
+  persona: "人格",
   logs: "日志",
 };
 
@@ -628,76 +621,6 @@ function KnowledgePanel({ friendId }: { friendId: string }) {
   );
 }
 
-function SearchPanel({ friendId }: { friendId: string }) {
-  const [query, setQuery] = useState("");
-  const [items, setItems] = useState<SearchHit[]>([]);
-  const [error, setError] = useState("");
-  return (
-    <div className="space-y-4">
-      <div className="flex gap-2">
-        <input
-          className="min-w-0 flex-1 rounded border border-stone-300 px-2 py-1.5 text-xs"
-          placeholder="搜索网页"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-        />
-        <button
-          className="rounded bg-stone-800 px-3 py-1.5 text-xs text-white"
-          onClick={async () => {
-            try {
-              const result = await searchWeb(friendId, query);
-              setItems(result.items);
-            } catch (reason) {
-              setError(String(reason));
-            }
-          }}
-        >
-          搜索
-        </button>
-      </div>
-      {error && <div className="text-xs text-red-600">{error}</div>}
-      <div className="space-y-3">
-        {items.map((item) => (
-          <a
-            key={item.url}
-            className="block rounded border border-stone-200 p-2 hover:bg-stone-50"
-            href={item.url}
-            target="_blank"
-            rel="noreferrer"
-          >
-            <div className="text-sm text-stone-800">{item.title}</div>
-            <div className="mt-1 text-xs text-stone-500">{item.snippet}</div>
-          </a>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ScreenPanel({ friendId }: { friendId: string }) {
-  const [assetId, setAssetId] = useState("");
-  return (
-    <div className="space-y-4">
-      <button
-        className="rounded bg-stone-800 px-3 py-1.5 text-xs text-white"
-        onClick={async () => {
-          const result = await captureScreen(friendId);
-          setAssetId(result.asset_id);
-        }}
-      >
-        截取当前屏幕
-      </button>
-      {assetId && (
-        <img
-          className="w-full rounded border border-stone-200"
-          src={assetUrl(assetId)}
-          alt="屏幕截图"
-        />
-      )}
-    </div>
-  );
-}
-
 function FilePanel() {
   const [path, setPath] = useState("");
   const [items, setItems] = useState<FileItem[]>([]);
@@ -1070,6 +993,67 @@ function LogPanel() {
   );
 }
 
+function PersonaPanel({ friend }: { friend: Friend }) {
+  const { loadFriends } = useApp();
+  const [name, setName] = useState(friend.name);
+  const [personality, setPersonality] = useState(friend.personality);
+  const [instructions, setInstructions] = useState(friend.custom_instructions);
+
+  useEffect(() => {
+    setName(friend.name);
+    setPersonality(friend.personality);
+    setInstructions(friend.custom_instructions);
+  }, [friend.id, friend.name, friend.personality, friend.custom_instructions]);
+
+  return (
+    <div className="space-y-6">
+      <section>
+        <div className="panel-title">人格</div>
+        <div className="space-y-2">
+          <input
+            className="w-full rounded border border-stone-300 px-2 py-1.5 text-sm"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+          />
+          <textarea
+            className="h-28 w-full resize-none rounded border border-stone-300 px-2 py-1.5 text-sm"
+            placeholder="她是谁"
+            value={personality}
+            onChange={(event) => setPersonality(event.target.value)}
+          />
+          <textarea
+            className="h-20 w-full resize-none rounded border border-stone-300 px-2 py-1.5 text-sm"
+            placeholder="说话习惯和补充要求"
+            value={instructions}
+            onChange={(event) => setInstructions(event.target.value)}
+          />
+          <button
+            className="rounded bg-stone-800 px-3 py-1.5 text-xs text-white"
+            onClick={async () => {
+              await patchFriend(friend.id, {
+                name,
+                personality,
+                custom_instructions: instructions,
+              });
+              await loadFriends();
+            }}
+          >
+            保存人格
+          </button>
+        </div>
+      </section>
+      <section>
+        <div className="panel-title">风格与表达</div>
+        <StylePanel friendId={friend.id} />
+      </section>
+      <section>
+        <div className="panel-title">呈现</div>
+        <VisualPanel friend={friend} />
+      </section>
+    </div>
+  );
+}
+
 export function FeatureDrawer() {
   const { panel, setPanel, selectedId, friends } = useApp();
   if (!panel || (panel !== "logs" && !selectedId)) return null;
@@ -1078,14 +1062,21 @@ export function FeatureDrawer() {
   return (
     <Drawer title={panelTitles[panel]} onClose={() => setPanel(null)}>
       {panel === "memory" && <MemoryPanel friendId={friendId} />}
-      {panel === "schedule" && <SchedulePanel friendId={friendId} />}
-      {panel === "thought" && <ThoughtPanel friendId={friendId} />}
-      {panel === "style" && <StylePanel friendId={friendId} />}
-      {panel === "knowledge" && <KnowledgePanel friendId={friendId} />}
-      {panel === "search" && <SearchPanel friendId={friendId} />}
-      {panel === "screen" && <ScreenPanel friendId={friendId} />}
-      {panel === "file" && <FilePanel />}
-      {panel === "visual" && friend && <VisualPanel friend={friend} />}
+      {panel === "schedule" && (
+        <>
+          <SchedulePanel friendId={friendId} />
+          <div className="panel-title mt-6">小纸条</div>
+          <ThoughtPanel friendId={friendId} />
+        </>
+      )}
+      {panel === "knowledge" && (
+        <>
+          <KnowledgePanel friendId={friendId} />
+          <div className="panel-title mt-6">文件</div>
+          <FilePanel />
+        </>
+      )}
+      {panel === "persona" && friend && <PersonaPanel friend={friend} />}
       {panel === "life" && friend && <LifePanel friend={friend} />}
       {panel === "logs" && <LogPanel />}
     </Drawer>

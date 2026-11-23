@@ -32,14 +32,9 @@ export type Features = Record<string, boolean>;
 export type Panel =
   | "memory"
   | "schedule"
-  | "thought"
-  | "style"
   | "knowledge"
-  | "search"
-  | "screen"
-  | "file"
-  | "visual"
   | "life"
+  | "persona"
   | "logs"
   | null;
 

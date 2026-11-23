@@ -428,6 +428,13 @@ body {
   font-size: 11px;
 }
 
+.panel-title {
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
 .app-shell input:not([type="file"]),
 .app-shell textarea,
 .app-shell select,
