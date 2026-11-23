@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Application, Ticker } from "pixi.js";
+import { API_BASE, getLive2DRuntimeStatus } from "./api";
 
 declare global {
   interface Window {
@@ -9,13 +10,21 @@ declare global {
 
 let runtimePromise: Promise<typeof import("pixi-live2d-display/cubism4")> | null = null;
 
+export function resetLive2DRuntime(): void {
+  runtimePromise = null;
+}
+
 async function loadRuntime() {
   if (!runtimePromise) {
     runtimePromise = (async () => {
       if (!window.Live2DCubismCore) {
+        const status = await getLive2DRuntimeStatus();
+        if (!status.available) {
+          throw new Error("需要先在设置里下载 Live2D 运行时");
+        }
         await new Promise<void>((resolve, reject) => {
           const script = document.createElement("script");
-          script.src = `${import.meta.env.BASE_URL}live2dcubismcore.min.js`;
+          script.src = `${API_BASE}/live2d/runtime/core.js?v=${Date.now()}`;
           script.async = true;
           script.onload = () => resolve();
           script.onerror = () => reject(new Error("Live2D Core 加载失败"));
@@ -47,6 +56,17 @@ export function Live2DCharacter({
   const speakingRef = useRef(speaking);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  const [errorText, setErrorText] = useState("");
+  const [runtimeEpoch, setRuntimeEpoch] = useState(0);
+
+  useEffect(() => {
+    const onRuntimeChanged = () => {
+      resetLive2DRuntime();
+      setRuntimeEpoch((value) => value + 1);
+    };
+    window.addEventListener("yf-live2d-runtime-changed", onRuntimeChanged);
+    return () => window.removeEventListener("yf-live2d-runtime-changed", onRuntimeChanged);
+  }, []);
 
   useEffect(() => {
     speakingRef.current = speaking;
@@ -120,11 +140,13 @@ export function Live2DCharacter({
         };
         app.ticker.add(ticker);
         setLoading(false);
+        setErrorText("");
       } catch (error) {
         console.error("[live2d]", error);
         if (!disposed) {
           setLoading(false);
           setFailed(true);
+          setErrorText(error instanceof Error ? error.message : "Live2D 加载失败");
         }
       }
     };
@@ -145,13 +167,14 @@ export function Live2DCharacter({
         // ignore
       }
     };
-  }, [modelUrl]);
+  }, [modelUrl, runtimeEpoch]);
 
   return (
     <div ref={hostRef} className={`relative h-full w-full ${className}`}>
       {(loading || failed) && (
         <div className="absolute inset-0 flex items-center justify-center text-xs text-white/45">
           {failed ? "Live2D 加载失败" : "正在加载 Live2D…"}
+          {failed && errorText ? `：${errorText}` : ""}
         </div>
       )}
     </div>

@@ -449,3 +449,47 @@ export function getLogs(): Promise<{ items: string[] }> {
 export function clearLogs(): Promise<void> {
   return request("/logs", { method: "DELETE" });
 }
+
+export type Live2DRuntimeStatus = {
+  available: boolean;
+  size: number | null;
+  license_urls: {
+    proprietary: string;
+    open: string;
+  };
+};
+
+export function getLive2DRuntimeStatus(): Promise<Live2DRuntimeStatus> {
+  return request("/live2d/runtime/status");
+}
+
+export async function downloadLive2DRuntime(
+  onProgress: (received: number, total: number) => void,
+): Promise<void> {
+  const response = await fetch(`${API_BASE}/live2d/runtime/download`, { method: "POST" });
+  if (!response.ok || !response.body) throw new Error(await response.text());
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const event = JSON.parse(line) as {
+        type: "progress" | "done" | "error";
+        received?: number;
+        total?: number;
+        message?: string;
+      };
+      if (event.type === "progress") {
+        onProgress(event.received ?? 0, event.total ?? 0);
+      } else if (event.type === "error") {
+        throw new Error(event.message ?? "下载失败");
+      }
+    }
+  }
+}

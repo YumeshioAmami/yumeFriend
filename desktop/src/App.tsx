@@ -1,17 +1,25 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   assetUrl,
+  downloadLive2DRuntime,
   drawImage,
+  getLive2DRuntimeStatus,
   listVisualPacks,
   synthesizeVoice,
   transcribeAudio,
   uploadAsset,
   type Friend,
+  type Live2DRuntimeStatus,
   type Message,
 } from "./api";
 import { FeatureDrawer } from "./FeatureDrawer";
 import { Live2DCharacter } from "./Live2DCharacter";
 import { useApp, type Settings, type Theme } from "./store";
+
+const LIVE2D_PROPRIETARY_LICENSE =
+  "https://www.live2d.com/eula/live2d-proprietary-software-license-agreement_en.html";
+const LIVE2D_OPEN_LICENSE =
+  "https://www.live2d.com/eula/live2d-open-software-license-agreement_en.html";
 
 function formatDateDivider(value: string): string {
   const date = new Date(value);
@@ -240,9 +248,16 @@ function SettingsModal() {
   } = useApp();
   const [draft, setDraft] = useState<Settings>(settings);
   const [updateStatus, setUpdateStatus] = useState("");
+  const [runtime, setRuntime] = useState<Live2DRuntimeStatus | null>(null);
+  const [runtimeAgree, setRuntimeAgree] = useState(false);
+  const [runtimeProgress, setRuntimeProgress] = useState("");
+  const [runtimeMessage, setRuntimeMessage] = useState("");
 
   useEffect(() => {
     if (settingsOpen) setDraft(settings);
+    if (settingsOpen) {
+      void getLive2DRuntimeStatus().then(setRuntime).catch(() => setRuntime(null));
+    }
   }, [settingsOpen, settings]);
 
   if (!settingsOpen) return null;
@@ -345,6 +360,74 @@ function SettingsModal() {
             查看日志
           </button>
           {updateStatus && <span className="text-xs text-stone-500">{updateStatus}</span>}
+        </div>
+        <div className="mt-4 border-t border-stone-200 pt-3">
+          <div className="mb-2 text-xs text-stone-500">Live2D 运行时</div>
+          <div className="text-xs text-[var(--muted)]">
+            状态：{runtime?.available ? "已安装" : "未安装"}
+          </div>
+          <div className="mt-2 flex gap-3 text-xs">
+            <a
+              className="text-[var(--accent)] underline"
+              href={runtime?.license_urls.proprietary ?? LIVE2D_PROPRIETARY_LICENSE}
+              target="_blank"
+              rel="noreferrer"
+            >
+              专有软件许可协议
+            </a>
+            <a
+              className="text-[var(--accent)] underline"
+              href={runtime?.license_urls.open ?? LIVE2D_OPEN_LICENSE}
+              target="_blank"
+              rel="noreferrer"
+            >
+              开源软件许可协议
+            </a>
+          </div>
+          <label className="mt-2 flex items-start gap-2 text-[11px] text-[var(--muted)]">
+            <input
+              type="checkbox"
+              checked={runtimeAgree}
+              onChange={(event) => setRuntimeAgree(event.target.checked)}
+            />
+            下载此运行时即表示同意 Live2D 官方许可协议
+          </label>
+          <div className="mt-2 flex items-center gap-2">
+            <button
+              type="button"
+              disabled={!runtimeAgree || runtimeProgress.startsWith("下载中")}
+              className="rounded bg-stone-800 px-3 py-1.5 text-xs text-white disabled:opacity-40"
+              onClick={async () => {
+                setRuntimeProgress("下载中…");
+                setRuntimeMessage("");
+                try {
+                  await downloadLive2DRuntime((received, total) => {
+                    setRuntimeProgress(
+                      total > 0
+                        ? `下载中 ${Math.round((received / total) * 100)}%`
+                        : `下载中 ${(received / 1024 / 1024).toFixed(1)} MB`,
+                    );
+                  });
+                  const status = await getLive2DRuntimeStatus();
+                  setRuntime(status);
+                  setRuntimeProgress("");
+                  setRuntimeMessage("下载完成");
+                  window.dispatchEvent(new Event("yf-live2d-runtime-changed"));
+                } catch (reason) {
+                  setRuntimeProgress("");
+                  setRuntimeMessage(String(reason));
+                }
+              }}
+            >
+              {runtime?.available ? "重新下载运行时" : "下载运行时"}
+            </button>
+            {runtimeProgress && (
+              <span className="text-xs text-[var(--muted)]">{runtimeProgress}</span>
+            )}
+            {runtimeMessage && (
+              <span className="text-xs text-[var(--muted)]">{runtimeMessage}</span>
+            )}
+          </div>
         </div>
         <div className="mt-4 border-t border-stone-200 pt-3">
           <div className="mb-2 text-xs text-stone-500">功能开关</div>
