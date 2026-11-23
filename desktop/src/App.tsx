@@ -592,9 +592,32 @@ function Chat() {
 }
 
 function ImmersiveOverlay() {
-  const { immersive, setImmersive, friends, selectedId, messages } = useApp();
+  const {
+    immersive,
+    setImmersive,
+    friends,
+    selectedId,
+    messages,
+    sendMessage,
+    sending,
+  } = useApp();
   const [preview, setPreview] = useState("");
+  const [mode, setMode] = useState<"her" | "me">("her");
+  const [index, setIndex] = useState(0);
+  const [draft, setDraft] = useState("");
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const friend = friends.find((item) => item.id === selectedId);
+  const lastAssistant = [...messages]
+    .reverse()
+    .find((message) => message.role === "assistant");
+  const paragraphs = (lastAssistant?.content ?? "")
+    .split(/\n{2,}/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const safeIndex = Math.min(index, Math.max(0, paragraphs.length - 1));
+  const current = paragraphs[safeIndex] ?? "";
+  const canAdvance = safeIndex < paragraphs.length - 1;
+  const replyKey = lastAssistant?.id ?? "";
 
   useEffect(() => {
     if (!immersive || !friend?.visual_pack_id) {
@@ -617,36 +640,129 @@ function ImmersiveOverlay() {
     });
   }, [immersive, friend?.visual_pack_id]);
 
+  useEffect(() => {
+    setIndex(0);
+    setMode("her");
+  }, [replyKey]);
+
+  useEffect(() => {
+    if (!immersive || !lastAssistant?.voice_asset_id) return;
+    const audio = audioRef.current;
+    if (audio) {
+      void audio.play().catch(() => undefined);
+    }
+  }, [immersive, replyKey, lastAssistant?.voice_asset_id]);
+
   if (!immersive || !friend) return null;
   return (
-    <div className="fixed inset-0 z-30 flex flex-col bg-stone-900 text-stone-100">
-      <div className="flex justify-end p-4">
+    <div className="fixed inset-0 z-30 flex flex-col overflow-hidden bg-stone-950 text-stone-100">
+      <header className="flex items-center justify-between px-5 py-3">
+        <span className="text-xs text-white/50">
+          {sending ? "正在说…" : mode === "me" ? "轮到你" : "点一下继续"}
+        </span>
         <button
           className="rounded border border-white/20 px-3 py-1 text-xs text-white/70"
           onClick={() => setImmersive(false)}
         >
           退出沉浸
         </button>
-      </div>
-      <div className="flex min-h-0 flex-1">
-        <div className="flex w-1/2 items-center justify-center">
+      </header>
+      <div
+        className="relative flex min-h-0 flex-1 items-end justify-center"
+        onClick={() => {
+          if (mode === "her") {
+            if (canAdvance) setIndex((current) => current + 1);
+            else setMode("me");
+          }
+        }}
+      >
+        {preview && (
+          <img
+            className="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover opacity-20 blur-2xl"
+            src={preview}
+            alt=""
+          />
+        )}
+        <div className="relative flex h-full w-full items-end justify-center">
           {preview ? (
-            <img className="max-h-full max-w-full object-contain" src={preview} alt={friend.name} />
+            <img
+              className="max-h-[82vh] max-w-[72vw] object-contain drop-shadow-[0_20px_60px_rgba(0,0,0,0.55)]"
+              src={preview}
+              alt={friend.name}
+            />
           ) : (
-            <div className="text-[120px] text-white/20">{friend.name.slice(0, 1)}</div>
+            <div className="pb-40 text-[160px] text-white/15">{friend.name.slice(0, 1)}</div>
           )}
         </div>
-        <div className="flex w-1/2 flex-col justify-end p-8">
-          <div className="mb-4 text-xl">{friend.name}</div>
-          <div className="max-h-[60vh] space-y-3 overflow-y-auto">
-            {messages.slice(-8).map((message) => (
-              <div key={message.id} className="text-sm leading-7 text-white/80">
-                {message.content}
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
+      <div
+        className="relative z-10 shrink-0 border-t border-white/15 bg-black/55 px-8 py-4 backdrop-blur-sm"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="absolute -top-7 left-8 rounded-md border border-white/15 bg-black/70 px-3 py-0.5 text-[13px] text-white/90">
+          {mode === "her" ? friend.name : "我"}
+        </div>
+        {mode === "her" ? (
+          <div
+            className="min-h-[76px] cursor-pointer whitespace-pre-wrap text-[16px] leading-[1.85] text-white"
+            onClick={() => {
+              if (canAdvance) setIndex((current) => current + 1);
+              else setMode("me");
+            }}
+          >
+            {current || (sending ? "……" : "（她在等你说话）")}
+            <div className="mt-2 text-right text-[11px] text-white/45">
+              {canAdvance
+                ? "▼ 点一下继续"
+                : sending
+                  ? "正在说…"
+                  : "点一下轮到你 ▸"}
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-end gap-2">
+            <textarea
+              autoFocus
+              rows={2}
+              className="h-[66px] flex-1 resize-none bg-transparent text-[16px] leading-[1.7] text-white outline-none placeholder:text-white/30"
+              placeholder={`对 ${friend.name} 说…`}
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  if (!draft.trim()) return;
+                  void sendMessage(draft);
+                  setDraft("");
+                  setMode("her");
+                  setIndex(0);
+                }
+              }}
+            />
+            <button
+              className="mb-1 rounded border border-white/20 px-3 py-1 text-xs text-white/70"
+              onClick={() => setMode("her")}
+            >
+              听她说
+            </button>
+            <button
+              className="mb-1 rounded bg-[var(--accent)] px-4 py-1 text-xs text-white disabled:opacity-40"
+              disabled={!draft.trim() || sending}
+              onClick={() => {
+                void sendMessage(draft);
+                setDraft("");
+                setMode("her");
+                setIndex(0);
+              }}
+            >
+              说
+            </button>
+          </div>
+        )}
+      </div>
+      {lastAssistant?.voice_asset_id && (
+        <audio ref={audioRef} src={assetUrl(lastAssistant.voice_asset_id)} className="hidden" />
+      )}
     </div>
   );
 }

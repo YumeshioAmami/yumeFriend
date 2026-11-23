@@ -14,6 +14,7 @@ const repoRoot = path.resolve(appRoot, "..");
 const corePort = Number(process.env.YUMECORE_PORT ?? "47895");
 const apiPort = Number(process.env.YUMEFRIEND_PORT ?? "47891");
 const children: ChildProcess[] = [];
+let mainWindow: BrowserWindow | null = null;
 let petWindow: BrowserWindow | null = null;
 
 function startServices(): void {
@@ -95,8 +96,10 @@ function createWindow(): void {
       preload: path.join(currentDir, "preload.js"),
     },
   });
+  mainWindow = window;
   window.setMenuBarVisibility(false);
   window.on("closed", () => {
+    mainWindow = null;
     petWindow?.close();
   });
 
@@ -114,8 +117,8 @@ function createPetWindow(): void {
     return;
   }
   petWindow = new BrowserWindow({
-    width: 220,
-    height: 240,
+    width: 320,
+    height: 440,
     transparent: true,
     frame: false,
     resizable: false,
@@ -142,6 +145,12 @@ function createPetWindow(): void {
 ipcMain.handle("pet:open", () => createPetWindow());
 ipcMain.handle("pet:close", (event) => {
   BrowserWindow.fromWebContents(event.sender)?.close();
+});
+ipcMain.handle("pet:open-main", () => {
+  if (!mainWindow) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
 });
 ipcMain.handle("update:check", async (_event, url: string) => {
   if (!url) throw new Error("未配置更新地址");

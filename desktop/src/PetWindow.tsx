@@ -1,9 +1,20 @@
 import { useEffect, useState } from "react";
-import { assetUrl, listFriends, listVisualPacks, type Friend } from "./api";
+import {
+  assetUrl,
+  listFriends,
+  listMessages,
+  listVisualPacks,
+  sendMessage,
+  type Friend,
+  type Message,
+} from "./api";
 
 export default function PetWindow() {
   const [friend, setFriend] = useState<Friend | null>(null);
   const [preview, setPreview] = useState("");
+  const [latest, setLatest] = useState<Message | null>(null);
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
 
   useEffect(() => {
     void Promise.all([listFriends(), listVisualPacks()]).then(([friends, packs]) => {
@@ -23,20 +34,64 @@ export default function PetWindow() {
     });
   }, []);
 
+  useEffect(() => {
+    if (!friend) return;
+    const poll = async () => {
+      const result = await listMessages(friend.id);
+      setLatest(result.items.at(-1) ?? null);
+    };
+    void poll();
+    const timer = window.setInterval(() => void poll(), 3000);
+    return () => window.clearInterval(timer);
+  }, [friend]);
+
+  const submit = () => {
+    if (!friend || !draft.trim() || sending) return;
+    setSending(true);
+    void sendMessage(friend.id, draft)
+      .then(() => setDraft(""))
+      .finally(() => setSending(false));
+  };
+
   return (
-    <div className="flex h-screen w-screen select-none flex-col items-center justify-center rounded-full bg-transparent">
-      <button
-        className="flex h-40 w-40 flex-col items-center justify-center rounded-full border border-white/40 bg-white/80 shadow-xl backdrop-blur"
-        onClick={() => window.yumeFriend?.closePet?.()}
-        title="关闭桌宠"
+    <div className="pet-shell">
+      <div
+        className="pet-preview"
+        onDoubleClick={() => window.yumeFriend?.openMain?.()}
+        title="双击回到主界面"
       >
         {preview ? (
-          <img className="h-32 w-32 rounded-full object-cover" src={preview} alt={friend?.name ?? ""} />
+          <img src={preview} alt={friend?.name ?? ""} draggable={false} />
         ) : (
-          <div className="text-5xl text-stone-600">{friend?.name.slice(0, 1) ?? "?"}</div>
+          <div className="pet-face">{friend?.name.slice(0, 1) ?? "?"}</div>
         )}
-        <div className="mt-2 text-xs text-stone-500">{friend?.name ?? "yumeFriend"}</div>
-      </button>
+      </div>
+      {latest?.content && (
+        <div className="pet-bubble pet-no-drag">
+          <div className="pet-name">{friend?.name}</div>
+          {latest.content}
+        </div>
+      )}
+      <div className="pet-input pet-no-drag">
+        <input
+          value={draft}
+          placeholder="说点什么…"
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              submit();
+            }
+          }}
+        />
+        <button disabled={sending || !draft.trim()} onClick={submit}>
+          发送
+        </button>
+      </div>
+      <div className="pet-actions pet-no-drag">
+        <button onClick={() => window.yumeFriend?.openMain?.()}>主界面</button>
+        <button onClick={() => window.yumeFriend?.closePet?.()}>关闭</button>
+      </div>
     </div>
   );
 }
