@@ -8,10 +8,12 @@ import {
   type Friend,
   type Message,
 } from "./api";
+import { Live2DCharacter } from "./Live2DCharacter";
 
 export default function PetWindow() {
   const [friend, setFriend] = useState<Friend | null>(null);
   const [preview, setPreview] = useState("");
+  const [modelUrl, setModelUrl] = useState("");
   const [latest, setLatest] = useState<Message | null>(null);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -25,10 +27,15 @@ export default function PetWindow() {
         setPreview(assetUrl(pack.preview_asset_id));
       } else if (pack) {
         try {
-          const manifest = JSON.parse(pack.manifest_json) as { preview_url?: string };
+          const manifest = JSON.parse(pack.manifest_json) as {
+            preview_url?: string;
+            model_url?: string;
+          };
           setPreview(manifest.preview_url ?? "");
+          setModelUrl(manifest.model_url ?? "");
         } catch {
           setPreview("");
+          setModelUrl("");
         }
       }
     });
@@ -60,7 +67,13 @@ export default function PetWindow() {
         onDoubleClick={() => window.yumeFriend?.openMain?.()}
         title="双击回到主界面"
       >
-        {preview ? (
+        {modelUrl ? (
+          <Live2DCharacter
+            modelUrl={modelUrl}
+            speaking={latest?.status === "streaming"}
+            className="h-full w-full"
+          />
+        ) : preview ? (
           <img src={preview} alt={friend?.name ?? ""} draggable={false} />
         ) : (
           <div className="pet-face">{friend?.name.slice(0, 1) ?? "?"}</div>

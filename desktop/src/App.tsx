@@ -10,6 +10,7 @@ import {
   type Message,
 } from "./api";
 import { FeatureDrawer } from "./FeatureDrawer";
+import { Live2DCharacter } from "./Live2DCharacter";
 import { useApp, type Settings, type Theme } from "./store";
 
 function formatDateDivider(value: string): string {
@@ -602,6 +603,7 @@ function ImmersiveOverlay() {
     sending,
   } = useApp();
   const [preview, setPreview] = useState("");
+  const [modelUrl, setModelUrl] = useState("");
   const [mode, setMode] = useState<"her" | "me">("her");
   const [index, setIndex] = useState(0);
   const [draft, setDraft] = useState("");
@@ -622,6 +624,7 @@ function ImmersiveOverlay() {
   useEffect(() => {
     if (!immersive || !friend?.visual_pack_id) {
       setPreview("");
+      setModelUrl("");
       return;
     }
     void listVisualPacks().then((result) => {
@@ -629,13 +632,18 @@ function ImmersiveOverlay() {
       if (!pack) return;
       if (pack.preview_asset_id) {
         setPreview(assetUrl(pack.preview_asset_id));
-        return;
-      }
-      try {
-        const manifest = JSON.parse(pack.manifest_json) as { preview_url?: string };
-        setPreview(manifest.preview_url ?? "");
-      } catch {
-        setPreview("");
+      } else {
+        try {
+          const manifest = JSON.parse(pack.manifest_json) as {
+            preview_url?: string;
+            model_url?: string;
+          };
+          setPreview(manifest.preview_url ?? "");
+          setModelUrl(manifest.model_url ?? "");
+        } catch {
+          setPreview("");
+          setModelUrl("");
+        }
       }
     });
   }, [immersive, friend?.visual_pack_id]);
@@ -684,7 +692,13 @@ function ImmersiveOverlay() {
           />
         )}
         <div className="relative flex h-full w-full items-end justify-center">
-          {preview ? (
+          {friend.visual_mode === "live2d" && modelUrl ? (
+            <Live2DCharacter
+              modelUrl={modelUrl}
+              speaking={sending || lastAssistant?.status === "streaming"}
+              className="max-h-[82vh] max-w-[72vw]"
+            />
+          ) : preview ? (
             <img
               className="max-h-[82vh] max-w-[72vw] object-contain drop-shadow-[0_20px_60px_rgba(0,0,0,0.55)]"
               src={preview}

@@ -93,7 +93,7 @@ function createWindow(): void {
     height: 800,
     autoHideMenuBar: true,
     webPreferences: {
-      preload: path.join(currentDir, "preload.js"),
+      preload: path.join(currentDir, "preload.cjs"),
     },
   });
   mainWindow = window;
@@ -126,7 +126,7 @@ function createPetWindow(): void {
     skipTaskbar: true,
     hasShadow: false,
     webPreferences: {
-      preload: path.join(currentDir, "preload.js"),
+      preload: path.join(currentDir, "preload.cjs"),
     },
   });
   petWindow.on("closed", () => {

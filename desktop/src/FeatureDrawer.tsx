@@ -52,6 +52,7 @@ import {
   type VisualPack,
 } from "./api";
 import { useApp, type Panel } from "./store";
+import { Live2DCharacter } from "./Live2DCharacter";
 
 const panelTitles: Record<Exclude<Panel, null>, string> = {
   memory: "记忆",
@@ -728,12 +729,11 @@ function FilePanel() {
   );
 }
 
-function parsePreview(manifestJson: string): string {
+function parseManifest(manifestJson: string): { preview_url?: string; model_url?: string } {
   try {
-    const parsed = JSON.parse(manifestJson) as { preview_url?: string };
-    return parsed.preview_url ?? "";
+    return JSON.parse(manifestJson) as { preview_url?: string; model_url?: string };
   } catch {
-    return "";
+    return {};
   }
 }
 
@@ -759,12 +759,11 @@ function VisualPanel({ friend }: { friend: Friend }) {
   }, []);
 
   const selected = packs.find((pack) => pack.id === friend.visual_pack_id);
+  const manifestData = selected ? parseManifest(selected.manifest_json) : {};
   const preview =
     selected?.preview_asset_id
       ? assetUrl(selected.preview_asset_id)
-      : selected
-        ? parsePreview(selected.manifest_json)
-        : "";
+      : (manifestData.preview_url ?? "");
 
   return (
     <div className="space-y-4">
@@ -798,7 +797,9 @@ function VisualPanel({ friend }: { friend: Friend }) {
         </select>
       </div>
       <div className="flex aspect-[3/4] max-h-72 items-center justify-center overflow-hidden rounded border border-stone-200 bg-stone-50">
-        {preview ? (
+        {selected?.kind === "live2d" && manifestData.model_url ? (
+          <Live2DCharacter modelUrl={manifestData.model_url} speaking={false} />
+        ) : preview ? (
           <img className="h-full w-full object-contain" src={preview} alt="外观预览" />
         ) : (
           <div className="text-5xl text-stone-300">{friend.name.slice(0, 1)}</div>

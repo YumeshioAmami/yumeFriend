@@ -71,6 +71,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.core = core
     app.state.streams = StreamRegistry()
     app.state.tasks = set()
+    await seed_default_visuals(core)
     logger.info("yumeFriend backend started")
     reminder = asyncio.create_task(reminder_loop(core))
     life = asyncio.create_task(life_loop(core))
@@ -103,6 +104,42 @@ logger.add(LOG_FILE, rotation="5 MB", retention=3, encoding="utf-8")
 
 def get_core(request: Request) -> CoreClient:
     return request.app.state.core
+
+
+async def seed_default_visuals(core: CoreClient) -> None:
+    result = await core.read("visual", "visual_packs", limit=100)
+    names = {item.get("name") for item in result.get("items", [])}
+    if "YUI" not in names:
+        await core.write(
+            "visual",
+            "visual_packs",
+            "create",
+            {
+                "kind": "live2d",
+                "name": "YUI",
+                "manifest_json": json.dumps(
+                    {
+                        "preview_url": "./live2d/yui/preview.png",
+                        "model_url": "./live2d/yui/yui-origin.model3.json",
+                    },
+                    ensure_ascii=False,
+                ),
+            },
+        )
+    if "默认立绘" not in names:
+        await core.write(
+            "visual",
+            "visual_packs",
+            "create",
+            {
+                "kind": "portrait",
+                "name": "默认立绘",
+                "manifest_json": json.dumps(
+                    {"preview_url": "./portrait.png"},
+                    ensure_ascii=False,
+                ),
+            },
+        )
 
 
 async def reminder_loop(core: CoreClient) -> None:

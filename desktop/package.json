@@ -11,11 +11,13 @@
     "build": "npm run build:web && npm run build:electron",
     "build:all": "npm run prepare:core && npm run build",
     "build:web": "tsc -p tsconfig.json && vite build",
-    "build:electron": "tsc -p tsconfig.electron.json",
+    "build:electron": "tsc -p tsconfig.electron.json && node scripts/copy-preload.mjs",
     "lint": "oxlint src electron",
     "test": "vitest run"
   },
   "dependencies": {
+    "pixi-live2d-display": "^0.4.0",
+    "pixi.js": "^6.5.10",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "zustand": "^5.1.0"

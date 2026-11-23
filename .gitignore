@@ -11,6 +11,7 @@ node_modules/
 dist/
 dist-electron/
 desktop/resources/*.jar
+desktop/public/live2dcubismcore.min.js
 coverage/
 
 # Python

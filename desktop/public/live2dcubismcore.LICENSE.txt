@@ -1,0 +1,4 @@
+Live2D Cubism Core (Web)
+Source: https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js
+License: Live2D Proprietary Software License / Cubism SDK terms
+Used only for local rendering of Live2D models in the yumeFriend desktop/mobile WebView.
