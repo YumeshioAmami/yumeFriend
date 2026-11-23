@@ -738,7 +738,7 @@ function parsePreview(manifestJson: string): string {
 }
 
 function VisualPanel({ friend }: { friend: Friend }) {
-  const { setImmersive, loadFriends } = useApp();
+  const { loadFriends } = useApp();
   const [packs, setPacks] = useState<VisualPack[]>([]);
   const [kind, setKind] = useState("portrait");
   const [name, setName] = useState("");
@@ -803,20 +803,6 @@ function VisualPanel({ friend }: { friend: Friend }) {
         ) : (
           <div className="text-5xl text-stone-300">{friend.name.slice(0, 1)}</div>
         )}
-      </div>
-      <div className="flex gap-2">
-        <button
-          className="rounded bg-stone-800 px-3 py-1.5 text-xs text-white"
-          onClick={() => setImmersive(true)}
-        >
-          沉浸
-        </button>
-        <button
-          className="rounded border border-stone-300 px-3 py-1.5 text-xs text-stone-600"
-          onClick={() => window.yumeFriend?.openPet?.()}
-        >
-          桌宠
-        </button>
       </div>
       <div className="space-y-2 border-t border-stone-200 pt-3">
         <div className="flex gap-2">

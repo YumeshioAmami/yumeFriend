@@ -399,6 +399,7 @@ function Chat() {
     error,
     sendMessage,
     setPanel,
+    setImmersive,
     refreshMessages,
     features,
   } = useApp();
@@ -447,6 +448,14 @@ function Chat() {
                 </button>
               </span>
             ))}
+          <span className="px-1 text-[10px] text-[var(--muted)]">/</span>
+          <button className="feature-link" onClick={() => setImmersive(true)}>
+            沉浸
+          </button>
+          <span className="px-1 text-[10px] text-[var(--muted)]">/</span>
+          <button className="feature-link" onClick={() => window.yumeFriend?.openPet?.()}>
+            桌宠
+          </button>
         </div>
       </div>
       <div className="chat-scroll">
