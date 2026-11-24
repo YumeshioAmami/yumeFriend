@@ -385,10 +385,24 @@ def clear_logs() -> Response:
 
 @app.get("/api/v1/friends")
 async def friends(request: Request) -> dict[str, Any]:
-    result = await get_core(request).read("friend", "friends", limit=200)
+    core = get_core(request)
+    result = await core.read("friend", "friends", limit=200)
     items = sorted(result.get("items", []), key=lambda item: item.get("created_at", ""))
-    items = [await message_with_assets(get_core(request), item) for item in items]
-    return {"items": items, "next_cursor": None}
+    enriched = []
+    for item in items:
+        messages = await core.read(
+            "chat",
+            "messages",
+            filter={"friend_id": item["id"]},
+            limit=1000,
+        )
+        item["unread_count"] = sum(
+            1
+            for message in messages.get("items", [])
+            if message.get("role") != "user" and not message.get("read_at")
+        )
+        enriched.append(await message_with_assets(core, item))
+    return {"items": enriched, "next_cursor": None}
 
 
 @app.post("/api/v1/friends")
@@ -425,6 +439,30 @@ async def get_friend(request: Request, friend_id: str) -> dict[str, Any]:
     if not result.get("items"):
         raise HTTPException(status_code=404, detail="friend not found")
     return result["items"][0]
+
+
+@app.post("/api/v1/friends/{friend_id}/read")
+async def mark_friend_read(request: Request, friend_id: str) -> dict[str, int]:
+    core = get_core(request)
+    result = await core.read(
+        "chat",
+        "messages",
+        filter={"friend_id": friend_id},
+        limit=1000,
+    )
+    updated = 0
+    now = datetime.now(UTC).isoformat()
+    for message in result.get("items", []):
+        if message.get("role") == "user" or message.get("read_at"):
+            continue
+        await core.write(
+            "chat",
+            "messages",
+            "update",
+            {"id": message["id"], "read_at": now},
+        )
+        updated += 1
+    return {"updated": updated}
 
 
 @app.patch("/api/v1/friends/{friend_id}")

@@ -10,6 +10,7 @@ export type Friend = {
   presence?: number;
   voice_id?: string | null;
   voice_reply_enabled?: number;
+  unread_count?: number;
   created_at: string;
   visual_mode?: string;
   visual_pack_id?: string | null;
@@ -464,6 +465,10 @@ export function patchFriend(
 
 export function deleteFriend(friendId: string): Promise<void> {
   return request(`/friends/${friendId}`, { method: "DELETE" });
+}
+
+export function markFriendRead(friendId: string): Promise<{ updated: number }> {
+  return request(`/friends/${friendId}/read`, { method: "POST" });
 }
 
 export function listVoices(): Promise<ListResult<Voice>> {

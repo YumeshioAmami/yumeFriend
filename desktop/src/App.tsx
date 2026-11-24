@@ -1287,6 +1287,7 @@ export default function App() {
     loadSettings,
     selectFriend,
     refreshMessages,
+    refreshUnread,
     theme,
     settings,
   } = useApp();
@@ -1299,9 +1300,10 @@ export default function App() {
   useEffect(() => {
     const timer = window.setInterval(() => {
       void refreshMessages();
+      void refreshUnread();
     }, 20_000);
     return () => window.clearInterval(timer);
-  }, [refreshMessages]);
+  }, [refreshMessages, refreshUnread]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = `${theme.color}-${theme.mode}`;
@@ -1348,13 +1350,19 @@ export default function App() {
                     {friend.personality || "还没聊过"}
                   </span>
                 </span>
-                <span className="self-start text-[10px] text-[var(--muted)]">
-                  {friend.created_at
-                    ? `${new Date(friend.created_at).getMonth() + 1}-${String(
-                        new Date(friend.created_at).getDate(),
-                      ).padStart(2, "0")}`
-                    : ""}
-                </span>
+                {friend.unread_count ? (
+                  <span className="unread-badge">
+                    {friend.unread_count > 99 ? "99+" : friend.unread_count}
+                  </span>
+                ) : (
+                  <span className="self-start text-[10px] text-[var(--muted)]">
+                    {friend.created_at
+                      ? `${new Date(friend.created_at).getMonth() + 1}-${String(
+                          new Date(friend.created_at).getDate(),
+                        ).padStart(2, "0")}`
+                      : ""}
+                  </span>
+                )}
               </button>
             ))}
           </div>

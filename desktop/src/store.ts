@@ -7,6 +7,7 @@ import {
   getSettings,
   listFriends,
   listMessages,
+  markFriendRead,
   retryMessage as retryMessageApi,
   saveSetting,
   sendMessage,
@@ -83,6 +84,7 @@ type AppState = {
   stopVoice: () => void;
   setCallActive: (active: boolean) => void;
   refreshMessages: () => Promise<void>;
+  refreshUnread: () => Promise<void>;
   classifyMessage: (messageId: string) => Promise<void>;
   retryMessage: (messageId: string) => Promise<void>;
   stopMessage: (messageId: string) => Promise<void>;
@@ -131,10 +133,18 @@ export const useApp = create<AppState>((set, get) => ({
     try {
       const result = await listFriends();
       const selectedId = get().selectedId ?? result.items[0]?.id ?? null;
-      set({ friends: result.items, selectedId });
       if (selectedId) {
         const messages = await listMessages(selectedId);
-        set({ messages: messages.items });
+        await markFriendRead(selectedId);
+        set({
+          friends: result.items.map((friend) =>
+            friend.id === selectedId ? { ...friend, unread_count: 0 } : friend,
+          ),
+          selectedId,
+          messages: messages.items,
+        });
+      } else {
+        set({ friends: result.items, selectedId });
       }
     } catch (error) {
       set({ error: String(error) });
@@ -147,7 +157,13 @@ export const useApp = create<AppState>((set, get) => ({
     set({ selectedId: friendId, messages: [], error: null });
     try {
       const result = await listMessages(friendId);
-      set({ messages: result.items });
+      await markFriendRead(friendId);
+      set((state) => ({
+        messages: result.items,
+        friends: state.friends.map((friend) =>
+          friend.id === friendId ? { ...friend, unread_count: 0 } : friend,
+        ),
+      }));
     } catch (error) {
       set({ error: String(error) });
     }
@@ -337,7 +353,22 @@ export const useApp = create<AppState>((set, get) => ({
     if (!friendId || get().sending) return;
     try {
       const result = await listMessages(friendId);
-      set({ messages: result.items });
+      await markFriendRead(friendId);
+      set((state) => ({
+        messages: result.items,
+        friends: state.friends.map((friend) =>
+          friend.id === friendId ? { ...friend, unread_count: 0 } : friend,
+        ),
+      }));
+    } catch {
+      // keep current view
+    }
+  },
+
+  refreshUnread: async () => {
+    try {
+      const result = await listFriends();
+      set({ friends: result.items });
     } catch {
       // keep current view
     }
@@ -370,6 +401,15 @@ function listenReply(replyMessage: Message) {
     closed = true;
     source.close();
     const state = useApp.getState();
+    if (state.selectedId === data.message.friend_id) {
+      void markFriendRead(data.message.friend_id).then(() => {
+        useApp.setState((current) => ({
+          friends: current.friends.map((item) =>
+            item.id === data.message.friend_id ? { ...item, unread_count: 0 } : item,
+          ),
+        }));
+      });
+    }
     const friend = state.friends.find((item) => item.id === data.message.friend_id);
     if (
       data.message.status === "completed" &&
