@@ -582,8 +582,7 @@ html[data-pet="1"] #root {
   min-height: 0;
   align-items: flex-end;
   justify-content: center;
-  cursor: grab;
-  touch-action: none;
+  -webkit-app-region: drag;
   animation: pet-float 4s ease-in-out infinite;
 }
 
@@ -597,24 +596,12 @@ html[data-pet="1"] #root {
   flex-direction: column;
   gap: 5px;
   pointer-events: none;
-}
-
-.pet-preview:active {
-  cursor: grabbing;
+  -webkit-app-region: no-drag;
 }
 
 .pet-locked .pet-preview {
-  cursor: default;
+  -webkit-app-region: no-drag;
   animation: none;
-}
-
-.pet-dragging .pet-preview {
-  animation: none;
-}
-
-.pet-dragging .pet-top-ui {
-  opacity: 0;
-  pointer-events: none;
 }
 
 .pet-preview img {
@@ -649,7 +636,9 @@ html[data-pet="1"] #root {
   font-size: 12px;
   line-height: 1.6;
   backdrop-filter: blur(8px);
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
 }
 
 .pet-name {
@@ -721,6 +710,7 @@ html[data-pet="1"] #root {
   padding: 3px 9px;
   color: #a34f40;
   font-size: 11px;
+  -webkit-app-region: no-drag;
 }
 
 @keyframes pet-float {

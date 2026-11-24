@@ -9,9 +9,6 @@ declare global {
       openMain?: () => void;
       getPetScale?: () => Promise<number>;
       setPetScale?: (scale: number) => Promise<number>;
-      beginPetDrag?: () => Promise<boolean>;
-      movePetDrag?: () => Promise<void>;
-      endPetDrag?: () => Promise<void>;
       isPetOpen?: () => Promise<boolean>;
       isMainFocused?: () => Promise<boolean>;
       checkUpdate?: (url: string) => Promise<{ version: string | null }>;

@@ -3,7 +3,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
   assetUrl,
@@ -36,13 +35,10 @@ export default function PetWindow() {
   const [hovered, setHovered] = useState(false);
   const [locked, setLocked] = useState(false);
   const [muted, setMuted] = useState(false);
-  const [dragging, setDragging] = useState(false);
   const [scale, setScale] = useState(1);
   const classifiedRef = useRef("");
   const playedRef = useRef("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const dragRef = useRef<{ x: number; y: number; moved: boolean } | null>(null);
-  const dragFrame = useRef(0);
 
   const showPack = (pack?: VisualPack) => {
     setPreview("");
@@ -199,48 +195,6 @@ export default function PetWindow() {
     void window.yumeFriend?.setPetScale?.(next);
   };
 
-  const startDrag = (event: ReactPointerEvent) => {
-    if (locked) return;
-    dragRef.current = { x: event.clientX, y: event.clientY, moved: false };
-    setDragging(true);
-    event.currentTarget.setPointerCapture(event.pointerId);
-    void window.yumeFriend?.beginPetDrag?.();
-  };
-
-  const moveDrag = (event: ReactPointerEvent) => {
-    const drag = dragRef.current;
-    if (!drag || locked) return;
-    if (
-      !drag.moved &&
-      Math.abs(event.clientX - drag.x) + Math.abs(event.clientY - drag.y) < 4
-    ) {
-      return;
-    }
-    drag.moved = true;
-    if (dragFrame.current) return;
-    dragFrame.current = window.requestAnimationFrame(() => {
-      dragFrame.current = 0;
-      if (dragRef.current?.moved) void window.yumeFriend?.movePetDrag?.();
-    });
-  };
-
-  const endDrag = (event: ReactPointerEvent) => {
-    const drag = dragRef.current;
-    dragRef.current = null;
-    if (!drag) return;
-    if (dragFrame.current) {
-      window.cancelAnimationFrame(dragFrame.current);
-      dragFrame.current = 0;
-    }
-    setDragging(false);
-    void window.yumeFriend?.endPetDrag?.();
-    event.stopPropagation();
-    if (drag.moved || locked) return;
-    if (bubbles.length > 1) {
-      setBubbleIndex((index) => (index + 1) % bubbles.length);
-    }
-  };
-
   const switchFriend = () => {
     if (locked || friends.length < 2 || !friend) return;
     const index = friends.findIndex((item) => item.id === friend.id);
@@ -268,23 +222,11 @@ export default function PetWindow() {
 
   return (
     <div
-      className={`pet-shell ${locked ? "pet-locked" : ""} ${dragging ? "pet-dragging" : ""}`}
+      className={`pet-shell ${locked ? "pet-locked" : ""}`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <div
-        className="pet-preview"
-        onPointerDown={startDrag}
-        onPointerMove={moveDrag}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
-        onWheel={(event) => {
-          if (locked || dragging) return;
-          event.stopPropagation();
-          adjustScale(scale - event.deltaY / 800);
-        }}
-        title={locked ? "桌宠已锁定" : "拖动移动窗口，滚轮缩放"}
-      >
+      <div className="pet-preview" title={locked ? "桌宠已锁定" : "拖动移动窗口"}>
         {friend?.visual_mode === "live2d" && modelUrl ? (
           <Live2DCharacter
             modelUrl={modelUrl}
@@ -303,7 +245,14 @@ export default function PetWindow() {
       {!locked && (
         <div className="pet-top-ui">
           {currentBubble?.text && (
-            <div className="pet-bubble">
+            <div
+              className="pet-bubble"
+              onClick={() => {
+                if (bubbles.length > 1) {
+                  setBubbleIndex((index) => (index + 1) % bubbles.length);
+                }
+              }}
+            >
               <div className="pet-name">{friend?.name}</div>
               {currentBubble.text}
             </div>
@@ -334,6 +283,16 @@ export default function PetWindow() {
                 <button onClick={() => setLocked(true)}>锁定</button>
                 <button onClick={() => setMuted((value) => !value)}>
                   {muted ? "声音" : "静音"}
+                </button>
+                <button
+                  onClick={() =>
+                    setBubbleIndex((index) =>
+                      bubbles.length ? (index + 1) % bubbles.length : 0,
+                    )
+                  }
+                  disabled={bubbles.length < 2}
+                >
+                  下一句
                 </button>
                 <button onClick={() => adjustScale(scale - 0.1)}>－</button>
                 <button onClick={() => adjustScale(scale + 0.1)}>＋</button>

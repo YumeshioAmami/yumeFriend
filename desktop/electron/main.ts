@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { app, BrowserWindow, dialog, ipcMain, screen } from "electron";
+import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import updater from "electron-updater";
 import { fileURLToPath } from "node:url";
 
@@ -19,12 +19,6 @@ let petWindow: BrowserWindow | null = null;
 let petFriendId = "";
 let zoomFactor = 1;
 let petScale = 1;
-let petDrag: {
-  cursorX: number;
-  cursorY: number;
-  windowX: number;
-  windowY: number;
-} | null = null;
 let petSaveTimer: NodeJS.Timeout | null = null;
 
 const userDataDir = path.join(repoRoot, "user_data");
@@ -248,30 +242,6 @@ ipcMain.handle("pet:set-scale", (_event, value: number) => {
     schedulePetStateSave();
   }
   return petScale;
-});
-ipcMain.handle("pet:drag-start", () => {
-  if (!petWindow) return false;
-  const cursor = screen.getCursorScreenPoint();
-  const bounds = petWindow.getBounds();
-  petDrag = {
-    cursorX: cursor.x,
-    cursorY: cursor.y,
-    windowX: bounds.x,
-    windowY: bounds.y,
-  };
-  return true;
-});
-ipcMain.handle("pet:drag-move", () => {
-  if (!petWindow || !petDrag) return;
-  const cursor = screen.getCursorScreenPoint();
-  petWindow.setPosition(
-    petDrag.windowX + cursor.x - petDrag.cursorX,
-    petDrag.windowY + cursor.y - petDrag.cursorY,
-  );
-});
-ipcMain.handle("pet:drag-end", () => {
-  petDrag = null;
-  schedulePetStateSave();
 });
 ipcMain.handle("pet:is-open", () => Boolean(petWindow));
 ipcMain.handle("pet:main-focused", () => mainWindow?.isFocused() ?? false);
