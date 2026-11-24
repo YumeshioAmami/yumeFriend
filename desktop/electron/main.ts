@@ -16,6 +16,7 @@ const apiPort = Number(process.env.YUMEFRIEND_PORT ?? "47891");
 const children: ChildProcess[] = [];
 let mainWindow: BrowserWindow | null = null;
 let petWindow: BrowserWindow | null = null;
+let petFriendId = "";
 
 function startServices(): void {
   const userData = path.join(repoRoot, "user_data");
@@ -111,11 +112,25 @@ function createWindow(): void {
   }
 }
 
-function createPetWindow(): void {
+function createPetWindow(friendId?: string): void {
   if (petWindow) {
     petWindow.focus();
+    if (friendId && friendId !== petFriendId) {
+      petFriendId = friendId;
+      const devUrl = process.env.VITE_DEV_SERVER_URL;
+      if (devUrl) {
+        void petWindow.loadURL(
+          `${devUrl}?pet=1&friend=${encodeURIComponent(friendId)}`,
+        );
+      } else {
+        void petWindow.loadFile(path.join(currentDir, "../dist/index.html"), {
+          query: { pet: "1", friend: friendId },
+        });
+      }
+    }
     return;
   }
+  petFriendId = friendId ?? "";
   petWindow = new BrowserWindow({
     width: 320,
     height: 440,
@@ -131,18 +146,20 @@ function createPetWindow(): void {
   });
   petWindow.on("closed", () => {
     petWindow = null;
+    petFriendId = "";
   });
   const devUrl = process.env.VITE_DEV_SERVER_URL;
   if (devUrl) {
-    void petWindow.loadURL(`${devUrl}?pet=1`);
+    const query = petFriendId ? `&friend=${encodeURIComponent(petFriendId)}` : "";
+    void petWindow.loadURL(`${devUrl}?pet=1${query}`);
   } else {
     void petWindow.loadFile(path.join(currentDir, "../dist/index.html"), {
-      query: { pet: "1" },
+      query: petFriendId ? { pet: "1", friend: petFriendId } : { pet: "1" },
     });
   }
 }
 
-ipcMain.handle("pet:open", () => createPetWindow());
+ipcMain.handle("pet:open", (_event, friendId?: string) => createPetWindow(friendId));
 ipcMain.handle("pet:close", (event) => {
   BrowserWindow.fromWebContents(event.sender)?.close();
 });

@@ -489,6 +489,8 @@ export type Live2DModel = {
   id: string;
   name: string;
   model_url: string;
+  used_by: string[];
+  source: string;
   has_settings: boolean;
   is_default: boolean;
 };

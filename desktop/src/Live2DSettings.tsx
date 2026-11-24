@@ -164,8 +164,17 @@ export function Live2DSettingsModal({
                 >
                   <div className="truncate">{model.name}</div>
                   <div className="mt-0.5 text-[10px] opacity-60">
-                    {model.is_default ? "内置默认" : model.id}
+                    {model.is_default
+                      ? "内置默认"
+                      : model.source === "user_data"
+                        ? "本机模型"
+                        : model.id}
                   </div>
+                  {model.used_by.length > 0 && (
+                    <div className="mt-0.5 truncate text-[10px] opacity-50">
+                      使用：{model.used_by.join("、")}
+                    </div>
+                  )}
                 </button>
               ))}
             </div>

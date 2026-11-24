@@ -562,7 +562,10 @@ function Chat() {
             沉浸
           </button>
           <span className="px-1 text-[10px] text-[var(--muted)]">/</span>
-          <button className="feature-link" onClick={() => window.yumeFriend?.openPet?.()}>
+          <button
+            className="feature-link"
+            onClick={() => window.yumeFriend?.openPet?.(friend.id)}
+          >
             桌宠
           </button>
         </div>

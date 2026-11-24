@@ -25,7 +25,10 @@ export default function PetWindow() {
 
   useEffect(() => {
     void Promise.all([listFriends(), listVisualPacks()]).then(([friends, packs]) => {
-      const current = friends.items[0] ?? null;
+      const friendId = new URLSearchParams(window.location.search).get("friend");
+      const current = friends.items.find((item) => item.id === friendId) ??
+        friends.items[0] ??
+        null;
       setFriend(current);
       const pack = packs.items.find((item) => item.id === current?.visual_pack_id);
       if (pack?.preview_asset_id) {

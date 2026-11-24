@@ -4,7 +4,7 @@ declare global {
   interface Window {
     yumeFriend?: {
       version: string;
-      openPet?: () => void;
+      openPet?: (friendId?: string) => void;
       closePet?: () => void;
       openMain?: () => void;
       checkUpdate?: (url: string) => Promise<{ version: string | null }>;

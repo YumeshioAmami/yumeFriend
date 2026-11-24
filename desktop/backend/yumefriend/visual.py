@@ -4,8 +4,10 @@ import hashlib
 import json
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from yumefriend.core import CoreClient
@@ -14,6 +16,7 @@ router = APIRouter(prefix="/api/v1")
 
 PUBLIC_DIR = Path(__file__).resolve().parents[2] / "public"
 PRODUCT_ROOT = Path(__file__).resolve().parents[3]
+USER_LIVE2D_DIR = PRODUCT_ROOT / "user_data" / "live2d"
 USER_MODEL_SETTINGS_DIR = PRODUCT_ROOT / "user_data" / "live2d" / "model_settings"
 
 PARAM_RANGES: dict[str, tuple[float, float, float]] = {
@@ -49,7 +52,7 @@ def core(request: Request) -> CoreClient:
 def resolve_public_path(model_url: str) -> Path | None:
     raw = model_url.removeprefix("./").lstrip("/")
     path = (PUBLIC_DIR / raw).resolve()
-    if PUBLIC_DIR.resolve() not in path.parents or not path.is_file():
+    if PUBLIC_DIR.resolve() not in path.parents or not path.exists():
         return None
     return path
 
@@ -58,6 +61,10 @@ def model_id_for_url(model_url: str) -> str | None:
     path = resolve_public_path(model_url)
     if path is None:
         return None
+    return model_id_for_file(path)
+
+
+def model_id_for_file(path: Path) -> str | None:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         moc = path.parent / data["FileReferences"]["Moc"]
@@ -81,8 +88,46 @@ def iter_public_models() -> list[Path]:
     )
 
 
+def iter_model_files() -> list[Path]:
+    roots = (PUBLIC_DIR / "live2d", USER_LIVE2D_DIR)
+    found = []
+    for root in roots:
+        if not root.is_dir():
+            continue
+        found.extend(
+            path
+            for path in root.rglob("*.model3.json")
+            if not path.name.startswith("_")
+            and "model_settings" not in path.parts
+            and "runtime" not in path.parts
+        )
+    return sorted(found)
+
+
+def unique_models() -> list[tuple[str, Path]]:
+    result = []
+    seen = set()
+    for path in iter_model_files():
+        model_id = model_id_for_file(path)
+        if model_id is None or model_id in seen:
+            continue
+        seen.add(model_id)
+        result.append((model_id, path))
+    return result
+
+
+def model_url_for_file(path: Path, request: Request) -> str:
+    if PUBLIC_DIR.resolve() in path.resolve().parents:
+        return public_model_url(path)
+    model_id = model_id_for_file(path)
+    return (
+        str(request.base_url).rstrip("/")
+        + f"/api/v1/live2d/models/{model_id}/files/{quote(path.name)}"
+    )
+
+
 def settings_for_model_file(path: Path) -> dict[str, Any] | None:
-    model_id = model_id_for_url(public_model_url(path))
+    model_id = model_id_for_file(path)
     if model_id is None:
         return None
     user_path = USER_MODEL_SETTINGS_DIR / f"{model_id}.json"
@@ -96,6 +141,21 @@ def settings_for_model_file(path: Path) -> dict[str, Any] | None:
     return None
 
 
+def portrait_expressions(manifest: dict[str, Any]) -> dict[str, str]:
+    directory = str(manifest.get("directory") or "")
+    if not directory:
+        return dict(manifest.get("expressions") or {})
+    root = resolve_public_path(directory)
+    if root is None or not root.is_dir():
+        return {}
+    result = {}
+    for path in sorted(root.iterdir()):
+        if not path.is_file() or path.suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp"}:
+            continue
+        result[path.stem] = public_model_url(path)
+    return result
+
+
 def labels_for_pack(pack: dict[str, Any] | None) -> tuple[list[str], str | None]:
     if not pack:
         return [], None
@@ -104,10 +164,13 @@ def labels_for_pack(pack: dict[str, Any] | None) -> tuple[list[str], str | None]
     except json.JSONDecodeError:
         return [], None
     if pack.get("kind") == "portrait":
-        labels = list((manifest.get("expressions") or {}).keys())
+        labels = list(portrait_expressions(manifest).keys())
     else:
-        model_url = str(manifest.get("model_url") or "")
-        model_path = resolve_public_path(model_url) if model_url else None
+        model_id = str(manifest.get("model_id") or "")
+        model_path = model_file_by_id(model_id) if model_id else None
+        if model_path is None:
+            model_url = str(manifest.get("model_url") or "")
+            model_path = resolve_public_path(model_url) if model_url else None
         settings = settings_for_model_file(model_path) if model_path else None
         labels = [
             str(item.get("name"))
@@ -123,8 +186,8 @@ def labels_for_pack(pack: dict[str, Any] | None) -> tuple[list[str], str | None]
 
 
 def model_file_by_id(model_id: str) -> Path | None:
-    for path in iter_public_models():
-        if model_id_for_url(public_model_url(path)) == model_id:
+    for current_id, path in unique_models():
+        if current_id == model_id:
             return path
     return None
 
@@ -132,7 +195,23 @@ def model_file_by_id(model_id: str) -> Path | None:
 @router.get("/visual-packs")
 async def list_packs(request: Request) -> dict[str, Any]:
     result = await core(request).read("visual", "visual_packs", limit=200)
-    return {"items": result.get("items", []), "next_cursor": None}
+    items = []
+    for item in result.get("items", []):
+        if item.get("kind") != "portrait":
+            items.append(item)
+            continue
+        try:
+            manifest = json.loads(item.get("manifest_json") or "{}")
+        except json.JSONDecodeError:
+            items.append(item)
+            continue
+        expressions = portrait_expressions(manifest)
+        if expressions:
+            manifest["expressions"] = expressions
+            manifest["preview_url"] = expressions.get("正常") or next(iter(expressions.values()))
+            item = {**item, "manifest_json": json.dumps(manifest, ensure_ascii=False)}
+        items.append(item)
+    return {"items": items, "next_cursor": None}
 
 
 @router.post("/visual-packs")
@@ -167,18 +246,40 @@ async def delete_pack(request: Request, pack_id: str) -> Response:
 
 
 @router.get("/live2d/models")
-async def list_live2d_models() -> dict[str, Any]:
-    items = []
-    for path in iter_public_models():
-        model_id = model_id_for_url(public_model_url(path))
-        if model_id is None:
+async def list_live2d_models(request: Request) -> dict[str, Any]:
+    client = core(request)
+    friends = (await client.read("friend", "friends", limit=500)).get("items", [])
+    packs = (await client.read("visual", "visual_packs", limit=500)).get("items", [])
+    pack_owners: dict[str, list[str]] = {}
+    for friend in friends:
+        if friend.get("visual_pack_id"):
+            pack_owners.setdefault(str(friend["visual_pack_id"]), []).append(
+                str(friend.get("name") or "")
+            )
+    model_owners: dict[str, list[str]] = {}
+    for pack in packs:
+        if pack.get("kind") != "live2d":
             continue
+        try:
+            manifest = json.loads(pack.get("manifest_json") or "{}")
+        except json.JSONDecodeError:
+            continue
+        model_id = str(manifest.get("model_id") or "")
+        if not model_id and manifest.get("model_url"):
+            model_id = model_id_for_url(str(manifest["model_url"])) or ""
+        if model_id:
+            model_owners[model_id] = pack_owners.get(str(pack.get("id")), [])
+
+    items = []
+    for model_id, path in unique_models():
         settings = settings_for_model_file(path)
         items.append(
             {
                 "id": model_id,
                 "name": (settings or {}).get("display_name") or path.stem,
-                "model_url": public_model_url(path),
+                "model_url": model_url_for_file(path, request),
+                "used_by": sorted(set(model_owners.get(model_id, []))),
+                "source": "bundled" if PUBLIC_DIR.resolve() in path.resolve().parents else "user_data",
                 "has_settings": settings is not None,
                 "is_default": path.parent.name == "yui",
             }
@@ -187,7 +288,7 @@ async def list_live2d_models() -> dict[str, Any]:
 
 
 @router.get("/live2d/models/{model_id}/settings")
-async def get_live2d_settings(model_id: str) -> dict[str, Any]:
+async def get_live2d_settings(request: Request, model_id: str) -> dict[str, Any]:
     path = model_file_by_id(model_id)
     if path is None:
         raise HTTPException(status_code=404, detail="model not found")
@@ -242,11 +343,23 @@ async def get_live2d_settings(model_id: str) -> dict[str, Any]:
                 for item in cdi.get("Parameters", [])
             ]
     return {
-        "model": {"id": model_id, "model_url": public_model_url(path)},
+        "model": {"id": model_id, "model_url": model_url_for_file(path, request)},
         "settings": settings,
         "expressions": expressions,
         "parameters": parameters,
     }
+
+
+@router.get("/live2d/models/{model_id}/files/{file_path:path}")
+async def get_live2d_model_file(model_id: str, file_path: str) -> FileResponse:
+    model_file = model_file_by_id(model_id)
+    if model_file is None:
+        raise HTTPException(status_code=404, detail="model not found")
+    root = model_file.parent.resolve()
+    target = (root / file_path).resolve()
+    if root not in target.parents or not target.is_file():
+        raise HTTPException(status_code=404, detail="file not found")
+    return FileResponse(target)
 
 
 @router.put("/live2d/models/{model_id}/settings")

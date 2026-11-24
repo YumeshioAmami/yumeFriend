@@ -149,6 +149,7 @@ async def seed_default_visuals(core: CoreClient) -> None:
     ]
     portrait_manifest = json.dumps(
         {
+            "directory": "./portraits/yui",
             "preview_url": "./portraits/yui/正常.png",
             "expressions": {
                 mood: f"./portraits/yui/{mood}.png"
