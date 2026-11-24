@@ -56,7 +56,9 @@ export default function PetWindow() {
     if (!friend) return;
     const poll = async () => {
       const result = await listMessages(friend.id);
-      setLatest(result.items.at(-1) ?? null);
+      setLatest(
+        [...result.items].reverse().find((message) => message.role === "assistant") ?? null,
+      );
     };
     void poll();
     const timer = window.setInterval(() => void poll(), 3000);
