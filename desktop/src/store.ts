@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import {
+  assetUrl,
   classifyMessageMoods,
   createFriend,
   deleteFriend as deleteFriendApi,
@@ -11,6 +12,7 @@ import {
   sendMessage,
   stopMessage as stopMessageApi,
   streamUrl,
+  synthesizeVoice,
   type Friend,
   type Message,
 } from "./api";
@@ -19,8 +21,12 @@ export type Settings = {
   llm_base_url: string;
   llm_api_key: string;
   llm_model: string;
+  tts_base_url: string;
+  tts_api_key: string;
   tts_model: string;
   tts_voice: string;
+  stt_base_url: string;
+  stt_api_key: string;
   stt_model: string;
   image_model: string;
   update_url: string;
@@ -49,6 +55,8 @@ type AppState = {
   settings: Settings;
   loading: boolean;
   sending: boolean;
+  speaking: boolean;
+  callActive: boolean;
   error: string | null;
   createOpen: boolean;
   settingsOpen: boolean;
@@ -69,6 +77,9 @@ type AppState = {
   setImmersive: (open: boolean) => void;
   saveTheme: (theme: Theme) => Promise<void>;
   saveFeatures: (features: Features) => Promise<void>;
+  playVoice: (assetIds: string[]) => Promise<void>;
+  stopVoice: () => void;
+  setCallActive: (active: boolean) => void;
   refreshMessages: () => Promise<void>;
   classifyMessage: (messageId: string) => Promise<void>;
   retryMessage: (messageId: string) => Promise<void>;
@@ -79,12 +90,20 @@ const emptySettings: Settings = {
   llm_base_url: "",
   llm_api_key: "",
   llm_model: "",
+  tts_base_url: "",
+  tts_api_key: "",
   tts_model: "",
   tts_voice: "",
+  stt_base_url: "",
+  stt_api_key: "",
   stt_model: "",
   image_model: "",
   update_url: "",
 };
+
+let voiceToken = 0;
+let voiceAudio: HTMLAudioElement | null = null;
+let voiceResolve: (() => void) | null = null;
 
 export const useApp = create<AppState>((set, get) => ({
   friends: [],
@@ -93,6 +112,8 @@ export const useApp = create<AppState>((set, get) => ({
   settings: emptySettings,
   loading: false,
   sending: false,
+  speaking: false,
+  callActive: false,
   error: null,
   createOpen: false,
   settingsOpen: false,
@@ -237,8 +258,12 @@ export const useApp = create<AppState>((set, get) => ({
       await saveSetting("llm_base_url", settings.llm_base_url);
       await saveSetting("llm_api_key", settings.llm_api_key);
       await saveSetting("llm_model", settings.llm_model);
+      await saveSetting("tts_base_url", settings.tts_base_url);
+      await saveSetting("tts_api_key", settings.tts_api_key);
       await saveSetting("tts_model", settings.tts_model);
       await saveSetting("tts_voice", settings.tts_voice);
+      await saveSetting("stt_base_url", settings.stt_base_url);
+      await saveSetting("stt_api_key", settings.stt_api_key);
       await saveSetting("stt_model", settings.stt_model);
       await saveSetting("image_model", settings.image_model);
       await saveSetting("update_url", settings.update_url);
@@ -260,6 +285,46 @@ export const useApp = create<AppState>((set, get) => ({
     await saveSetting("features", features);
     set({ features });
   },
+  playVoice: async (assetIds) => {
+    if (!assetIds.length) return;
+    const token = ++voiceToken;
+    voiceAudio?.pause();
+    voiceResolve?.();
+    set({ speaking: true });
+    try {
+      for (const assetId of assetIds) {
+        if (token !== voiceToken) return;
+        await new Promise<void>((resolve, reject) => {
+          const audio = new Audio(assetUrl(assetId));
+          voiceAudio = audio;
+          voiceResolve = () => resolve();
+          audio.onended = () => {
+            voiceResolve = null;
+            resolve();
+          };
+          audio.onerror = () => reject(new Error("语音播放失败"));
+          void audio.play().catch(reject);
+        });
+      }
+    } catch {
+      // ignore playback errors
+    } finally {
+      if (token === voiceToken) {
+        voiceAudio = null;
+        voiceResolve = null;
+        set({ speaking: false });
+      }
+    }
+  },
+  stopVoice: () => {
+    voiceToken += 1;
+    voiceAudio?.pause();
+    voiceResolve?.();
+    voiceAudio = null;
+    voiceResolve = null;
+    set({ speaking: false });
+  },
+  setCallActive: (active) => set({ callActive: active }),
 
   refreshMessages: async () => {
     const friendId = get().selectedId;
@@ -298,6 +363,26 @@ function listenReply(replyMessage: Message) {
     }));
     closed = true;
     source.close();
+    const state = useApp.getState();
+    const friend = state.friends.find((item) => item.id === data.message.friend_id);
+    if (
+      data.message.status === "completed" &&
+      !state.immersive &&
+      !state.callActive &&
+      friend?.voice_reply_enabled === 1 &&
+      friend.voice_id
+    ) {
+      void synthesizeVoice(data.message.id)
+        .then(async (result) => {
+          useApp.setState((current) => ({
+            messages: current.messages.map((message) =>
+              message.id === result.message.id ? result.message : message,
+            ),
+          }));
+          await state.playVoice(result.message.voice_asset_ids ?? []);
+        })
+        .catch(() => undefined);
+    }
   });
 
   source.addEventListener("error", (event) => {

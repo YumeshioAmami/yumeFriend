@@ -366,7 +366,7 @@ async def patch_friend(
     result = await core.read("friend", "friends", filter={"id": friend_id}, limit=1)
     if not result.get("items"):
         raise HTTPException(status_code=404, detail="friend not found")
-    patch = draft.model_dump(exclude_unset=True, exclude_none=True)
+    patch = draft.model_dump(exclude_unset=True)
     if not patch:
         return result["items"][0]
     updated = await core.write(

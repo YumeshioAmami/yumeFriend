@@ -8,6 +8,8 @@ export type Friend = {
   custom_instructions: string;
   avatar_asset_id?: string | null;
   presence?: number;
+  voice_id?: string | null;
+  voice_reply_enabled?: number;
   created_at: string;
   visual_mode?: string;
   visual_pack_id?: string | null;
@@ -23,7 +25,7 @@ export type Message = {
   error_text?: string | null;
   created_at: string;
   image_asset_ids?: string[];
-  voice_asset_id?: string | null;
+  voice_asset_ids?: string[];
   mood?: string | null;
   segments?: MoodUnit[];
   sources?: SearchHit[];
@@ -112,6 +114,14 @@ export type VisualPack = {
   name: string;
   manifest_json: string;
   preview_asset_id?: string | null;
+};
+
+export type Voice = {
+  id: string;
+  name: string;
+  provider: string;
+  config_json: string;
+  speed: number;
 };
 
 export type LifeState = {
@@ -420,7 +430,7 @@ export async function transcribeAudio(blob: Blob): Promise<{ text: string }> {
   return response.json() as Promise<{ text: string }>;
 }
 
-export function synthesizeVoice(messageId: string): Promise<{ asset_id: string }> {
+export function synthesizeVoice(messageId: string): Promise<{ message: Message }> {
   return request(`/messages/${messageId}/voice`, { method: "POST" });
 }
 
@@ -443,6 +453,35 @@ export function patchFriend(
 
 export function deleteFriend(friendId: string): Promise<void> {
   return request(`/friends/${friendId}`, { method: "DELETE" });
+}
+
+export function listVoices(): Promise<ListResult<Voice>> {
+  return request("/voices");
+}
+
+export function createVoice(data: Record<string, unknown>): Promise<Voice> {
+  return request("/voices", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateVoice(voiceId: string, data: Record<string, unknown>): Promise<Voice> {
+  return request(`/voices/${voiceId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteVoice(voiceId: string): Promise<void> {
+  return request(`/voices/${voiceId}`, { method: "DELETE" });
+}
+
+export function testVoice(voiceId: string, text: string): Promise<{ asset_id: string }> {
+  return request(`/voices/${voiceId}/test`, {
+    method: "POST",
+    body: JSON.stringify({ text }),
+  });
 }
 
 export function listVisualPacks(): Promise<ListResult<VisualPack>> {

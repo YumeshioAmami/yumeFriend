@@ -16,6 +16,7 @@ import { FeatureDrawer } from "./FeatureDrawer";
 import { Live2DCharacter } from "./Live2DCharacter";
 import { Live2DSettingsModal } from "./Live2DSettings";
 import { useApp, type Settings, type Theme } from "./store";
+import { VoiceSettings } from "./VoiceSettings";
 
 const LIVE2D_PROPRIETARY_LICENSE =
   "https://www.live2d.com/eula/live2d-proprietary-software-license-agreement_en.html";
@@ -80,12 +81,20 @@ const icons = {
       <path d="m13 6 5 5" />
     </Icon>
   ),
+  phone: (
+    <Icon>
+      <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.6a2 2 0 0 1-.5 2.1L8 9.7a16 16 0 0 0 6.3 6.3l1.3-1.3a2 2 0 0 1 2.1-.5c.8.3 1.7.6 2.6.7a2 2 0 0 1 1.7 2z" />
+    </Icon>
+  ),
 };
 
 function MessageRow({ message, friend }: { message: Message; friend: Friend }) {
   const assistant = message.role === "assistant";
   const refreshMessages = useApp((state) => state.refreshMessages);
   const retryMessage = useApp((state) => state.retryMessage);
+  const playVoice = useApp((state) => state.playVoice);
+  const stopVoice = useApp((state) => state.stopVoice);
+  const [playing, setPlaying] = useState(false);
   if (message.role === "system") {
     return (
       <div className="my-4 text-center text-[11px] text-[var(--muted)]">{message.content}</div>
@@ -122,15 +131,30 @@ function MessageRow({ message, friend }: { message: Message; friend: Friend }) {
             alt="图片"
           />
         ))}
-        {message.voice_asset_id && (
-          <audio className="mt-2 h-8" controls src={assetUrl(message.voice_asset_id)} />
-        )}
-        {assistant && !message.voice_asset_id && message.content && (
+        {(message.voice_asset_ids?.length ?? 0) > 0 && (
           <button
             className="mt-2 text-[11px] text-stone-400 hover:text-stone-700"
             onClick={async () => {
-              await synthesizeVoice(message.id);
+              if (playing) {
+                stopVoice();
+                setPlaying(false);
+                return;
+              }
+              setPlaying(true);
+              await playVoice(message.voice_asset_ids ?? []);
+              setPlaying(false);
+            }}
+          >
+            {playing ? "停止" : "播放语音"}
+          </button>
+        )}
+        {assistant && !(message.voice_asset_ids?.length ?? 0) && message.content && (
+          <button
+            className="mt-2 text-[11px] text-stone-400 hover:text-stone-700"
+            onClick={async () => {
+              const result = await synthesizeVoice(message.id);
               await refreshMessages();
+              await playVoice(result.message.voice_asset_ids ?? []);
             }}
           >
             念给我听
@@ -365,14 +389,19 @@ function SettingsModal() {
         <div className="mt-4 border-t border-stone-200 pt-3 text-xs text-stone-500">语音 / 图片</div>
         <div className="mt-2 grid grid-cols-2 gap-2">
           {([
+            ["tts_base_url", "TTS Base URL"],
+            ["tts_api_key", "TTS API Key"],
             ["tts_model", "语音合成模型"],
             ["tts_voice", "音色"],
+            ["stt_base_url", "STT Base URL"],
+            ["stt_api_key", "STT API Key"],
             ["stt_model", "语音识别模型"],
             ["image_model", "图片生成模型"],
           ] as const).map(([key, label]) => (
             <label key={key} className="block text-xs text-stone-500">
               {label}
               <input
+                type={key.endsWith("api_key") ? "password" : "text"}
                 className="mt-1 w-full rounded border border-stone-300 px-3 py-2 text-sm outline-none focus:border-stone-500"
                 value={draft[key]}
                 onChange={(event) =>
@@ -381,6 +410,10 @@ function SettingsModal() {
               />
             </label>
           ))}
+        </div>
+        <div className="mt-4 border-t border-stone-200 pt-3 text-xs text-stone-500">音色</div>
+        <div className="mt-2">
+          <VoiceSettings />
         </div>
         <label className="mt-3 block text-xs text-stone-500">
           更新地址
@@ -557,6 +590,7 @@ function Chat() {
   const [draft, setDraft] = useState("");
   const [assetIds, setAssetIds] = useState<string[]>([]);
   const [recording, setRecording] = useState(false);
+  const [callOpen, setCallOpen] = useState(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const friend = friends.find((item) => item.id === selectedId);
   const streamingMessage = [...messages].reverse().find((message) => message.status === "streaming");
@@ -699,6 +733,9 @@ function Chat() {
           >
             {icons.mic}
           </button>
+          <button className="icon-button" onClick={() => setCallOpen(true)}>
+            {icons.phone}
+          </button>
           <button
             className="icon-button"
             onClick={async () => {
@@ -748,7 +785,159 @@ function Chat() {
           </form>
         </div>
       </div>
+      {callOpen && <CallOverlay friend={friend} onClose={() => setCallOpen(false)} />}
     </section>
+  );
+}
+
+function CallOverlay({ friend, onClose }: { friend: Friend; onClose: () => void }) {
+  const {
+    messages,
+    sending,
+    speaking,
+    sendMessage,
+    stopVoice,
+    playVoice,
+    setCallActive,
+  } = useApp();
+  const [stage, setStage] = useState<"idle" | "listening" | "transcribing">("idle");
+  const [callError, setCallError] = useState("");
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const cancelledRef = useRef(false);
+  const lastAssistant = [...messages]
+    .reverse()
+    .find((message) => message.role === "assistant");
+  const spokenRef = useRef(
+    [...messages]
+      .reverse()
+      .find((message) => message.role === "assistant" && message.status === "completed")?.id ?? "",
+  );
+  const busy = sending || speaking || stage === "transcribing";
+
+  useEffect(() => {
+    setCallActive(true);
+    return () => setCallActive(false);
+  }, [setCallActive]);
+
+  useEffect(() => {
+    if (
+      !lastAssistant ||
+      lastAssistant.id === spokenRef.current ||
+      lastAssistant.status !== "completed"
+    ) {
+      return;
+    }
+    spokenRef.current = lastAssistant.id;
+    const assetIds = lastAssistant.voice_asset_ids ?? [];
+    if (assetIds.length) {
+      void playVoice(assetIds);
+      return;
+    }
+    void synthesizeVoice(lastAssistant.id)
+      .then(async (result) => {
+        useApp.setState((state) => ({
+          messages: state.messages.map((message) =>
+            message.id === result.message.id ? result.message : message,
+          ),
+        }));
+        await playVoice(result.message.voice_asset_ids ?? []);
+      })
+      .catch((error) => setCallError(String(error)));
+  }, [lastAssistant, playVoice]);
+
+  const startTalking = async () => {
+    if (busy || stage === "listening") return;
+    setCallError("");
+    cancelledRef.current = false;
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (error) {
+      setCallError(String(error));
+      return;
+    }
+    const recorder = new MediaRecorder(stream);
+    const chunks: Blob[] = [];
+    recorder.ondataavailable = (event) => chunks.push(event.data);
+    recorder.onstop = async () => {
+      stream.getTracks().forEach((track) => track.stop());
+      if (cancelledRef.current) return;
+      setStage("transcribing");
+      try {
+        const result = await transcribeAudio(new Blob(chunks, { type: "audio/webm" }));
+        if (result.text.trim()) {
+          void sendMessage(result.text.trim());
+        }
+      } catch (error) {
+        setCallError(String(error));
+      } finally {
+        setStage("idle");
+      }
+    };
+    recorder.start();
+    recorderRef.current = recorder;
+    setStage("listening");
+  };
+
+  const stopTalking = () => {
+    if (stage !== "listening") return;
+    recorderRef.current?.stop();
+    setStage("transcribing");
+  };
+
+  const hangUp = () => {
+    cancelledRef.current = true;
+    if (recorderRef.current?.state === "recording") {
+      recorderRef.current.stop();
+    }
+    stopVoice();
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-40 flex flex-col bg-stone-950 text-stone-100">
+      <header className="flex items-center justify-between px-6 py-4">
+        <span className="text-xs text-white/45">与 {friend.name} 通话中</span>
+        <button
+          className="rounded border border-white/20 px-3 py-1 text-xs text-white/70"
+          onClick={hangUp}
+        >
+          挂断
+        </button>
+      </header>
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-10">
+        <div className="avatar !h-28 !w-28 !text-5xl">
+          {friend.avatar_asset_id ? (
+            <img src={assetUrl(friend.avatar_asset_id)} alt={friend.name} />
+          ) : (
+            friend.name.slice(0, 1)
+          )}
+        </div>
+        <div className="mt-4 font-serif text-2xl">{friend.name}</div>
+        <div className="mt-8 max-h-56 max-w-2xl overflow-y-auto whitespace-pre-wrap text-center text-[15px] leading-8 text-white/75">
+          {lastAssistant?.content || "……"}
+        </div>
+      </div>
+      <div className="flex flex-col items-center pb-12">
+        <button
+          className={`h-20 w-20 rounded-full border text-sm transition ${
+            stage === "listening"
+              ? "border-red-400 bg-red-500/20 text-red-300"
+              : "border-white/25 bg-white/10 text-white/80 disabled:opacity-35"
+          }`}
+          disabled={busy}
+          onPointerDown={(event) => {
+            event.currentTarget.setPointerCapture(event.pointerId);
+            void startTalking();
+          }}
+          onPointerUp={stopTalking}
+          onPointerCancel={stopTalking}
+        >
+          {stage === "transcribing" ? "识别中" : sending ? "思考中" : speaking ? "说话中" : "按住说话"}
+        </button>
+        {callError && <div className="mt-3 text-xs text-red-300">{callError}</div>}
+      </div>
+    </div>
   );
 }
 
@@ -761,6 +950,8 @@ function ImmersiveOverlay() {
     messages,
     sendMessage,
     sending,
+    speaking,
+    playVoice,
     classifyMessage,
   } = useApp();
   const [preview, setPreview] = useState("");
@@ -770,8 +961,8 @@ function ImmersiveOverlay() {
   const [mode, setMode] = useState<"her" | "me">("her");
   const [index, setIndex] = useState(0);
   const [draft, setDraft] = useState("");
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const classifiedRef = useRef("");
+  const playedRef = useRef("");
   const friend = friends.find((item) => item.id === selectedId);
   const lastAssistant = [...messages]
     .reverse()
@@ -837,12 +1028,12 @@ function ImmersiveOverlay() {
   }, [replyKey]);
 
   useEffect(() => {
-    if (!immersive || !lastAssistant?.voice_asset_id) return;
-    const audio = audioRef.current;
-    if (audio) {
-      void audio.play().catch(() => undefined);
-    }
-  }, [immersive, replyKey, lastAssistant?.voice_asset_id]);
+    if (!immersive || !lastAssistant || playedRef.current === lastAssistant.id) return;
+    const assetIds = lastAssistant.voice_asset_ids ?? [];
+    if (!assetIds.length) return;
+    playedRef.current = lastAssistant.id;
+    void playVoice(assetIds);
+  }, [immersive, lastAssistant, playVoice]);
 
   if (!immersive || !friend) return null;
   return (
@@ -880,7 +1071,7 @@ function ImmersiveOverlay() {
               modelUrl={modelUrl}
               modelId={modelId}
               mood={currentMood}
-              speaking={sending || lastAssistant?.status === "streaming"}
+              speaking={speaking || sending || lastAssistant?.status === "streaming"}
               className="max-h-[82vh] max-w-[72vw]"
             />
           ) : displayPreview ? (
@@ -959,9 +1150,6 @@ function ImmersiveOverlay() {
           </div>
         )}
       </div>
-      {lastAssistant?.voice_asset_id && (
-        <audio ref={audioRef} src={assetUrl(lastAssistant.voice_asset_id)} className="hidden" />
-      )}
     </div>
   );
 }

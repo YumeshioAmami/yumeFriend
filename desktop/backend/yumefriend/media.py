@@ -21,6 +21,10 @@ class VoiceDraft(BaseModel):
     speed: float = 1.0
 
 
+class VoiceTest(BaseModel):
+    text: str
+
+
 class DrawDraft(BaseModel):
     prompt: str
 
@@ -50,6 +54,48 @@ async def media_config(core: CoreClient, prefix: str) -> tuple[str, str, str]:
     return base_url.rstrip("/"), api_key, model
 
 
+async def voice_config(
+    core: CoreClient,
+    voice_id: str | None,
+) -> tuple[str, str]:
+    values = await settings_map(core)
+    voice_name = values.get("tts_voice") or "alloy"
+    speed = 1.0
+    if voice_id:
+        result = await core.read("voice", "voices", filter={"id": voice_id}, limit=1)
+        if result.get("items"):
+            voice = result["items"][0]
+            try:
+                config = json.loads(voice.get("config_json") or "{}")
+            except json.JSONDecodeError:
+                config = {}
+            voice_name = config.get("voice") or voice_name
+            speed = float(voice.get("speed") or 1.0)
+    return voice_name, speed
+
+
+async def synthesize_audio(
+    core: CoreClient,
+    voice_id: str | None,
+    text: str,
+) -> dict[str, Any]:
+    base_url, api_key, model = await media_config(core, "tts")
+    voice_name, speed = await voice_config(core, voice_id)
+    async with httpx.AsyncClient(timeout=120) as http:
+        response = await http.post(
+            f"{base_url}/audio/speech",
+            headers={"Authorization": f"Bearer {api_key}"},
+            json={
+                "model": model,
+                "voice": voice_name,
+                "input": text,
+                "speed": speed,
+            },
+        )
+        response.raise_for_status()
+    return save_asset(response.content, "audio/mpeg", "audio")
+
+
 async def message_with_assets(core: CoreClient, message: dict[str, Any]) -> dict[str, Any]:
     assets = await core.read(
         "chat",
@@ -62,10 +108,14 @@ async def message_with_assets(core: CoreClient, message: dict[str, Any]) -> dict
         for item in assets.get("items", [])
         if item.get("role") == "image"
     ]
-    voice = next(
-        (item["asset_id"] for item in assets.get("items", []) if item.get("role") == "voice"),
-        None,
-    )
+    voices = [
+        item["asset_id"]
+        for item in sorted(
+            assets.get("items", []),
+            key=lambda item: int(item.get("position", 0)),
+        )
+        if item.get("role") == "voice"
+    ]
     try:
         segments = json.loads(message.get("segments_json") or "[]")
     except json.JSONDecodeError:
@@ -81,7 +131,7 @@ async def message_with_assets(core: CoreClient, message: dict[str, Any]) -> dict
     return {
         **message,
         "image_asset_ids": images,
-        "voice_asset_id": voice,
+        "voice_asset_ids": voices,
         "segments": segments,
         "sources": sources,
         "tool_calls": tool_calls,
@@ -134,26 +184,73 @@ async def synthesize(request: Request, message_id: str) -> dict[str, Any]:
     if not result.get("items"):
         raise HTTPException(status_code=404, detail="message not found")
     message = result["items"][0]
-    text = message.get("content", "")
-    base_url, api_key, model = await media_config(client, "tts")
-    values = await settings_map(client)
-    voice = values.get("tts_voice") or "alloy"
-    async with httpx.AsyncClient(timeout=120) as http:
-        response = await http.post(
-            f"{base_url}/audio/speech",
-            headers={"Authorization": f"Bearer {api_key}"},
-            json={"model": model, "voice": voice, "input": text},
+    friend_result = await client.read(
+        "friend",
+        "friends",
+        filter={"id": message["friend_id"]},
+        limit=1,
+    )
+    friend = friend_result["items"][0] if friend_result.get("items") else {}
+    from yumefriend.chat import message_units
+
+    units = message_units(message)
+    bubbles: dict[int, list[str]] = {}
+    for unit in units:
+        bubbles.setdefault(int(unit["bubble"]), []).append(str(unit["text"]))
+    texts = ["\n".join(items) for _, items in sorted(bubbles.items())]
+    if not texts:
+        raise HTTPException(status_code=400, detail="消息没有可合成内容")
+    existing = await client.read(
+        "chat",
+        "message_assets",
+        filter={"message_id": message_id},
+        limit=50,
+    )
+    start_position = max(
+        [
+            int(item.get("position", 0))
+            for item in existing.get("items", [])
+            if item.get("role") == "voice"
+        ],
+        default=-1,
+    ) + 1
+    for item in existing.get("items", []):
+        if item.get("role") == "voice":
+            await client.write(
+                "chat",
+                "message_assets",
+                "delete",
+                {
+                    "message_id": message_id,
+                    "role": "voice",
+                    "position": item["position"],
+                },
+            )
+    try:
+        for offset, text in enumerate(texts):
+            asset = await synthesize_audio(client, friend.get("voice_id"), text)
+            await attach_asset(
+                client,
+                message_id,
+                asset["id"],
+                "voice",
+                start_position + offset,
+            )
+    except Exception as error:
+        await client.write(
+            "chat",
+            "messages",
+            "update",
+            {"id": message_id, "voice_status": "failed", "voice_error": str(error)},
         )
-        response.raise_for_status()
-    asset = save_asset(response.content, "audio/mpeg", "audio")
-    await attach_asset(client, message_id, asset["id"], "voice")
+        raise HTTPException(status_code=502, detail=str(error)) from error
     updated = await client.write(
         "chat",
         "messages",
         "update",
-        {"id": message_id, "voice_status": "ready"},
+        {"id": message_id, "voice_status": "ready", "voice_error": None},
     )
-    return {"asset_id": asset["id"], "message": await message_with_assets(client, updated["record"])}
+    return {"message": await message_with_assets(client, updated["record"])}
 
 
 @router.post("/friends/{friend_id}/draw")
@@ -242,3 +339,10 @@ async def update_voice(request: Request, voice_id: str, draft: VoiceDraft) -> di
 async def delete_voice(request: Request, voice_id: str) -> Response:
     await core(request).write("voice", "voices", "delete", {"id": voice_id})
     return Response(status_code=204)
+
+
+@router.post("/voices/{voice_id}/test")
+async def test_voice(request: Request, voice_id: str, draft: VoiceTest) -> dict[str, str]:
+    client = core(request)
+    asset = await synthesize_audio(client, voice_id, draft.text)
+    return {"asset_id": asset["id"]}

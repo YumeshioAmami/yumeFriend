@@ -25,6 +25,7 @@ import {
   listSchedules,
   listThoughts,
   listVisualPacks,
+  listVoices,
   moveFile,
   patchFriend,
   pauseLife,
@@ -50,6 +51,7 @@ import {
   type Schedule,
   type SearchHit,
   type Thought,
+  type Voice,
   type VisualPack,
 } from "./api";
 import { useApp, type Panel } from "./store";
@@ -988,7 +990,16 @@ function PersonaPanel({ friend }: { friend: Friend }) {
   const [instructions, setInstructions] = useState(friend.custom_instructions);
   const [presence, setPresence] = useState(friend.presence ?? 1);
   const [avatarId, setAvatarId] = useState(friend.avatar_asset_id ?? null);
+  const [voiceId, setVoiceId] = useState(friend.voice_id ?? "");
+  const [voiceReplyEnabled, setVoiceReplyEnabled] = useState(
+    friend.voice_reply_enabled === 1,
+  );
+  const [voices, setVoices] = useState<Voice[]>([]);
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  useEffect(() => {
+    void listVoices().then((result) => setVoices(result.items));
+  }, []);
 
   useEffect(() => {
     setName(friend.name);
@@ -996,6 +1007,8 @@ function PersonaPanel({ friend }: { friend: Friend }) {
     setInstructions(friend.custom_instructions);
     setPresence(friend.presence ?? 1);
     setAvatarId(friend.avatar_asset_id ?? null);
+    setVoiceId(friend.voice_id ?? "");
+    setVoiceReplyEnabled(friend.voice_reply_enabled === 1);
   }, [
     friend.id,
     friend.name,
@@ -1003,6 +1016,8 @@ function PersonaPanel({ friend }: { friend: Friend }) {
     friend.custom_instructions,
     friend.presence,
     friend.avatar_asset_id,
+    friend.voice_id,
+    friend.voice_reply_enabled,
   ]);
 
   return (
@@ -1074,6 +1089,43 @@ function PersonaPanel({ friend }: { friend: Friend }) {
             }}
           >
             保存人格
+          </button>
+        </div>
+      </section>
+      <section>
+        <div className="panel-title">声音</div>
+        <div className="space-y-2">
+          <select
+            className="w-full px-3 py-2 text-sm"
+            value={voiceId}
+            onChange={(event) => setVoiceId(event.target.value)}
+          >
+            <option value="">不绑定音色</option>
+            {voices.map((voice) => (
+              <option key={voice.id} value={voice.id}>
+                {voice.name}
+              </option>
+            ))}
+          </select>
+          <label className="flex items-center gap-2 text-xs text-stone-600">
+            <input
+              type="checkbox"
+              checked={voiceReplyEnabled}
+              onChange={(event) => setVoiceReplyEnabled(event.target.checked)}
+            />
+            回复默认带语音
+          </label>
+          <button
+            className="rounded bg-stone-800 px-3 py-1.5 text-xs text-white"
+            onClick={async () => {
+              await patchFriend(friend.id, {
+                voice_id: voiceId || null,
+                voice_reply_enabled: voiceReplyEnabled ? 1 : 0,
+              });
+              await loadFriends();
+            }}
+          >
+            保存声音
           </button>
         </div>
       </section>
