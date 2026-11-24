@@ -28,6 +28,8 @@
    `assets/live2d/model_settings/3c384bb881607f7b.json`.
 4. Added `preview.png`, rendered from the runtime model by yumeFriend.
 5. No moc3, model3, motion3, physics3, or expression content was edited.
+6. `model_settings.json` is yumeFriend's default emotional-label template for
+   this model; users can override it in `user_data/live2d/model_settings/`.
 
 The upstream project is licensed under Apache-2.0. Its `NOTICE` file is kept
 verbatim next to this document. The YUI model asset is distributed as part of

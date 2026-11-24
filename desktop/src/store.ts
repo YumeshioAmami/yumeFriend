@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import {
+  classifyMessageMoods,
   createFriend,
   getSettings,
   listFriends,
@@ -65,6 +66,7 @@ type AppState = {
   saveTheme: (theme: Theme) => Promise<void>;
   saveFeatures: (features: Features) => Promise<void>;
   refreshMessages: () => Promise<void>;
+  classifyMessage: (messageId: string) => Promise<void>;
 };
 
 const emptySettings: Settings = {
@@ -195,6 +197,21 @@ export const useApp = create<AppState>((set, get) => ({
       };
     } catch (error) {
       set({ error: String(error), sending: false });
+    }
+  },
+
+  classifyMessage: async (messageId) => {
+    try {
+      const result = await classifyMessageMoods(messageId);
+      set((state) => ({
+        messages: state.messages.map((message) =>
+          message.id === messageId
+            ? { ...message, mood: result.mood, segments: result.segments }
+            : message,
+        ),
+      }));
+    } catch (error) {
+      set({ error: String(error) });
     }
   },
 

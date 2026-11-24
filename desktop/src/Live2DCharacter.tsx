@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Application, Ticker } from "pixi.js";
-import { API_BASE, getLive2DRuntimeStatus } from "./api";
+import {
+  API_BASE,
+  getLive2DRuntimeStatus,
+  getLive2DSettings,
+  type Live2DSettings,
+} from "./api";
 
 declare global {
   interface Window {
@@ -45,19 +50,48 @@ async function loadRuntime() {
 
 export function Live2DCharacter({
   modelUrl,
+  modelId,
+  mood,
   speaking = false,
   className = "",
 }: {
   modelUrl: string;
+  modelId?: string | null;
+  mood?: string | null;
   speaking?: boolean;
   className?: string;
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const speakingRef = useRef(speaking);
+  const moodRef = useRef(mood);
+  const modelRef = useRef<any>(null);
+  const settingsRef = useRef<Live2DSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [errorText, setErrorText] = useState("");
   const [runtimeEpoch, setRuntimeEpoch] = useState(0);
+
+  const applyMood = () => {
+    const core = modelRef.current?.internalModel?.coreModel;
+    const settings = settingsRef.current;
+    if (!core || !settings) return;
+    const label =
+      settings.labels.find((item) => item.name === moodRef.current) ??
+      settings.labels.find((item) => item.name === settings.default_label) ??
+      settings.labels[0];
+    for (const [id, value] of Object.entries(settings.base)) {
+      core.setParameterValueById(id, value);
+    }
+    for (const [id, value] of Object.entries(label?.params ?? {})) {
+      core.setParameterValueById(id, value);
+    }
+    if (speakingRef.current) {
+      core.setParameterValueById(
+        "ParamMouthOpenY",
+        0.15 + Math.max(0, Math.sin(performance.now() / 90)) * 0.45,
+      );
+    }
+  };
 
   useEffect(() => {
     const onRuntimeChanged = () => {
@@ -73,12 +107,17 @@ export function Live2DCharacter({
   }, [speaking]);
 
   useEffect(() => {
+    moodRef.current = mood;
+    applyMood();
+  }, [mood]);
+
+  useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
     let app: Application | null = null;
     let model: any = null;
     let disposed = false;
-    let ticker: (() => void) | null = null;
+    const onAfterMotion = () => applyMood();
 
     const boot = async () => {
       try {
@@ -91,10 +130,11 @@ export function Live2DCharacter({
           resolution: Math.min(2.5, Math.max(2, window.devicePixelRatio || 1)),
           sharedTicker: true,
         });
-        app.view.style.width = "100%";
-        app.view.style.height = "100%";
-        app.view.style.display = "block";
-        host.appendChild(app.view as HTMLCanvasElement);
+        const view = app.view as HTMLCanvasElement;
+        view.style.width = "100%";
+        view.style.height = "100%";
+        view.style.display = "block";
+        host.appendChild(view);
 
         model = await Live2DModel.from(modelUrl, { autoInteract: false });
         if (disposed) {
@@ -103,7 +143,9 @@ export function Live2DCharacter({
           return;
         }
         app.stage.addChild(model);
+        modelRef.current = model;
         model.anchor.set(0, 0);
+        model.internalModel?.on("afterMotionUpdate", onAfterMotion);
 
         const fit = () => {
           if (!app || !model || disposed) return;
@@ -125,20 +167,12 @@ export function Live2DCharacter({
         host.dataset.observer = "1";
         (host as any).__observer = observer;
         void model.motion("Idle").catch(() => undefined);
+        if (modelId) {
+          const data = await getLive2DSettings(modelId);
+          settingsRef.current = data.settings;
+          applyMood();
+        }
 
-        ticker = () => {
-          const core = model?.internalModel?.coreModel;
-          if (!core) return;
-          const mouth = speakingRef.current
-            ? 0.15 + Math.max(0, Math.sin(performance.now() / 90)) * 0.45
-            : 0;
-          try {
-            core.setParameterValueById("ParamMouthOpenY", mouth);
-          } catch {
-            // model has no mouth parameter
-          }
-        };
-        app.ticker.add(ticker);
         setLoading(false);
         setErrorText("");
       } catch (error) {
@@ -154,9 +188,11 @@ export function Live2DCharacter({
 
     return () => {
       disposed = true;
+      modelRef.current = null;
+      settingsRef.current = null;
       (host as any).__observer?.disconnect();
-      if (app && ticker) app.ticker.remove(ticker);
       try {
+        model?.internalModel?.off("afterMotionUpdate", onAfterMotion);
         model?.destroy();
       } catch {
         // ignore

@@ -10,6 +10,10 @@ from openai import AsyncOpenAI
 
 from yumefriend.context import PromptContext, style_text
 from yumefriend.core import CoreClient
+from yumefriend.media import message_with_assets
+from yumefriend.visual import labels_for_pack
+
+BUBBLE_SEPARATOR = "<<<MSG>>>"
 
 
 @dataclass
@@ -17,6 +21,72 @@ class ModelConfig:
     base_url: str
     api_key: str
     model: str
+
+
+class BubbleSeparatorParser:
+    def __init__(self) -> None:
+        self.buffer = ""
+
+    def feed(self, text: str) -> str:
+        self.buffer += text
+        visible: list[str] = []
+        while True:
+            index = self.buffer.find(BUBBLE_SEPARATOR)
+            if index >= 0:
+                visible.append(self.buffer[:index])
+                visible.append("\n\n")
+                self.buffer = self.buffer[index + len(BUBBLE_SEPARATOR) :]
+                continue
+            keep = 0
+            for size in range(min(len(self.buffer), len(BUBBLE_SEPARATOR) - 1), 0, -1):
+                if self.buffer.endswith(BUBBLE_SEPARATOR[:size]):
+                    keep = size
+                    break
+            if keep:
+                visible.append(self.buffer[:-keep])
+                self.buffer = self.buffer[-keep:]
+            else:
+                visible.append(self.buffer)
+                self.buffer = ""
+            break
+        return "".join(visible)
+
+    def flush(self) -> str:
+        text = self.buffer
+        self.buffer = ""
+        return text
+
+
+def visible_content(raw: str) -> str:
+    return raw.replace(BUBBLE_SEPARATOR, "\n\n").strip()
+
+
+def parse_units(raw: str) -> list[dict[str, Any]]:
+    units: list[dict[str, Any]] = []
+    for bubble_index, bubble in enumerate(raw.split(BUBBLE_SEPARATOR)):
+        for line in bubble.splitlines():
+            text = line.strip()
+            if text:
+                units.append({"bubble": bubble_index, "text": text, "mood": None})
+    return units
+
+
+def message_units(message: dict[str, Any]) -> list[dict[str, Any]]:
+    try:
+        stored = json.loads(message.get("segments_json") or "[]")
+    except json.JSONDecodeError:
+        stored = []
+    if isinstance(stored, list) and stored:
+        return [
+            {
+                "bubble": int(item.get("bubble", 0)),
+                "text": str(item.get("text", "")),
+                "mood": item.get("mood"),
+            }
+            for item in stored
+            if item.get("text")
+        ]
+    return parse_units(str(message.get("content") or ""))
 
 
 class StreamRegistry:
@@ -82,7 +152,10 @@ def build_prompt(
         (
             "# 你说话的规矩\n"
             "· 像真人一样说话，用自然口气。\n"
-            "· 回复通常 2～4 句；对方要短就短。\n"
+            "· 回复长度跟着话题走；可以短，也可以多个自然段展开；对方要短就短。\n"
+            "· 用自然段落说话；对方要整理时再列点。\n"
+            "· 需要分成多个气泡时，用 <<<MSG>>> 分隔。\n"
+            "· 正文里不写情绪标签或内部标记。\n"
             "· 先接住对方的话，再说自己的想法。\n"
             "· 只输出说出口的话。"
         ),
@@ -133,7 +206,8 @@ async def generate_reply(
 ) -> None:
     streams.push(message_id, {"type": "start", "data": {"message_id": message_id}})
     client = AsyncOpenAI(base_url=config.base_url or None, api_key=config.api_key)
-    content = ""
+    raw_content = ""
+    parser = BubbleSeparatorParser()
     try:
         stream = await client.chat.completions.create(
             model=config.model,
@@ -145,23 +219,40 @@ async def generate_reply(
             delta = chunk.choices[0].delta.content or ""
             if not delta:
                 continue
-            content += delta
-            streams.push(message_id, {"type": "delta", "data": {"text": delta}})
+            raw_content += delta
+            visible = parser.feed(delta)
+            if visible:
+                streams.push(message_id, {"type": "delta", "data": {"text": visible}})
+
+        tail = parser.flush()
+        if tail:
+            streams.push(message_id, {"type": "delta", "data": {"text": tail}})
 
         final = await core.write(
             "chat",
             "messages",
             "update",
-            {"id": message_id, "content": content, "status": "completed"},
+            {
+                "id": message_id,
+                "content": visible_content(raw_content),
+                "segments_json": json.dumps(parse_units(raw_content), ensure_ascii=False),
+                "status": "completed",
+            },
         )
-        streams.push(message_id, {"type": "end", "data": {"message": final.get("record")}})
+        streams.push(
+            message_id,
+            {
+                "type": "end",
+                "data": {"message": await message_with_assets(core, final["record"])},
+            },
+        )
         await extract_memories(
             core,
             client,
             config,
             friend["id"],
             history,
-            content,
+            visible_content(raw_content),
         )
     except Exception as error:  # noqa: BLE001
         await core.write(
@@ -263,3 +354,122 @@ async def extract_memories(
             known.add(content)
     except Exception:  # noqa: BLE001
         return
+
+
+async def classify_message_moods(core: CoreClient, message_id: str) -> dict[str, Any]:
+    result = await core.read("chat", "messages", filter={"id": message_id}, limit=1)
+    if not result.get("items"):
+        raise ValueError("message not found")
+    message = result["items"][0]
+    if message.get("role") != "assistant" or message.get("status") != "completed":
+        raise ValueError("message is not a completed assistant reply")
+    if message.get("mood"):
+        return {"mood": message["mood"], "segments": message_units(message)}
+
+    friend_id = str(message["friend_id"])
+    friend_result = await core.read("friend", "friends", filter={"id": friend_id}, limit=1)
+    if not friend_result.get("items"):
+        raise ValueError("friend not found")
+    friend = friend_result["items"][0]
+    pack = None
+    if friend.get("visual_pack_id"):
+        pack_result = await core.read(
+            "visual",
+            "visual_packs",
+            filter={"id": friend["visual_pack_id"]},
+            limit=1,
+        )
+        pack = (pack_result.get("items") or [None])[0]
+
+    labels, default_label = labels_for_pack(pack)
+    units = message_units(message)
+    if not units or not labels:
+        return {"mood": None, "segments": units}
+
+    fallback = default_label or labels[0]
+    if len(labels) == 1:
+        moods = [labels[0] for _ in units]
+    else:
+        history = await core.read(
+            "chat",
+            "messages",
+            filter={"friend_id": friend_id},
+            limit=500,
+        )
+        items = sorted(history.get("items", []), key=lambda item: item.get("created_at", ""))
+        index = next(
+            (position for position, item in enumerate(items) if item.get("id") == message_id),
+            len(items),
+        )
+        user_text = next(
+            (
+                str(item.get("content", ""))
+                for item in reversed(items[:index])
+                if item.get("role") == "user"
+            ),
+            "",
+        )
+        numbered = "\n".join(
+            f"{position}. {unit['text']}" for position, unit in enumerate(units, start=1)
+        )
+        config = await load_model_config(core)
+        if config is None:
+            moods = [fallback for _ in units]
+        else:
+            client = AsyncOpenAI(base_url=config.base_url or None, api_key=config.api_key)
+            try:
+                response = await client.chat.completions.create(
+                    model=config.model,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": (
+                                "你只做情绪分类。只输出 JSON 数组，不解释。"
+                                "数组长度必须等于编号单元数，每项必须是可用标签之一。"
+                                "同一话题、同一语气连续时沿用同一标签；"
+                                "只有话题或语气明显变化才换，不强制每段不同。"
+                            ),
+                        },
+                        {
+                            "role": "user",
+                            "content": (
+                                f"可用标签：{'、'.join(labels)}\n\n"
+                                f"本轮用户消息：{user_text}\n\n"
+                                f"编号单元：\n{numbered}"
+                            ),
+                        },
+                    ],
+                    temperature=0,
+                    max_tokens=256,
+                )
+                text = (response.choices[0].message.content or "").strip()
+                start = text.find("[")
+                end = text.rfind("]")
+                parsed = json.loads(text[start : end + 1]) if start >= 0 and end >= start else []
+                if (
+                    isinstance(parsed, list)
+                    and len(parsed) == len(units)
+                    and all(str(item) in labels for item in parsed)
+                ):
+                    moods = [str(item) for item in parsed]
+                else:
+                    moods = [fallback for _ in units]
+            except Exception:  # noqa: BLE001
+                moods = [fallback for _ in units]
+            finally:
+                await client.close()
+
+    for unit, mood in zip(units, moods, strict=True):
+        unit["mood"] = mood
+    last_mood = moods[-1]
+    await core.write(
+        "chat",
+        "messages",
+        "update",
+        {
+            "id": message_id,
+            "mood": last_mood,
+            "segments_json": json.dumps(units, ensure_ascii=False),
+        },
+    )
+    return {"mood": last_mood, "segments": units}

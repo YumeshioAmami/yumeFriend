@@ -83,13 +83,28 @@ function MessageRow({ message, friend }: { message: Message; friend: Friend }) {
       <div className="my-4 text-center text-[11px] text-[var(--muted)]">{message.content}</div>
     );
   }
+  const units = message.segments ?? [];
+  const bubbles = units.length
+    ? [...new Set(units.map((unit) => unit.bubble))].map((bubble) =>
+        units
+          .filter((unit) => unit.bubble === bubble)
+          .map((unit) => unit.text)
+          .join("\n"),
+      )
+    : [message.content];
   return (
     <div className={`msg-row ${assistant ? "assistant" : "user"}`}>
       {assistant && <Avatar friend={friend} />}
       <div className="msg-content">
-        <div>
-          {message.content}
-          {message.status === "streaming" && <span className="ml-1 animate-pulse">▍</span>}
+        <div className="space-y-2">
+          {bubbles.map((text, index) => (
+            <div key={index} className="whitespace-pre-wrap">
+              {text}
+              {index === bubbles.length - 1 && message.status === "streaming" && (
+                <span className="ml-1 animate-pulse">▍</span>
+              )}
+            </div>
+          ))}
         </div>
         {message.image_asset_ids?.map((assetId) => (
           <img
@@ -684,30 +699,40 @@ function ImmersiveOverlay() {
     messages,
     sendMessage,
     sending,
+    classifyMessage,
   } = useApp();
   const [preview, setPreview] = useState("");
   const [modelUrl, setModelUrl] = useState("");
+  const [modelId, setModelId] = useState("");
+  const [expressions, setExpressions] = useState<Record<string, string>>({});
   const [mode, setMode] = useState<"her" | "me">("her");
   const [index, setIndex] = useState(0);
   const [draft, setDraft] = useState("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const classifiedRef = useRef("");
   const friend = friends.find((item) => item.id === selectedId);
   const lastAssistant = [...messages]
     .reverse()
     .find((message) => message.role === "assistant");
-  const paragraphs = (lastAssistant?.content ?? "")
-    .split(/\n{2,}/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-  const safeIndex = Math.min(index, Math.max(0, paragraphs.length - 1));
-  const current = paragraphs[safeIndex] ?? "";
-  const canAdvance = safeIndex < paragraphs.length - 1;
+  const units = lastAssistant?.segments?.length
+    ? lastAssistant.segments
+    : (lastAssistant?.content ?? "")
+        .split(/\n+/)
+        .map((text) => ({ bubble: 0, text: text.trim(), mood: null }))
+        .filter((unit) => unit.text);
+  const safeIndex = Math.min(index, Math.max(0, units.length - 1));
+  const current = units[safeIndex]?.text ?? "";
+  const currentMood = units[safeIndex]?.mood ?? lastAssistant?.mood ?? "正常";
+  const displayPreview = expressions[currentMood] || preview;
+  const canAdvance = safeIndex < units.length - 1;
   const replyKey = lastAssistant?.id ?? "";
 
   useEffect(() => {
     if (!immersive || !friend?.visual_pack_id) {
       setPreview("");
       setModelUrl("");
+      setModelId("");
+      setExpressions({});
       return;
     }
     void listVisualPacks().then((result) => {
@@ -720,16 +745,29 @@ function ImmersiveOverlay() {
           const manifest = JSON.parse(pack.manifest_json) as {
             preview_url?: string;
             model_url?: string;
+            model_id?: string;
+            expressions?: Record<string, string>;
           };
           setPreview(manifest.preview_url ?? "");
           setModelUrl(manifest.model_url ?? "");
+          setModelId(manifest.model_id ?? "");
+          setExpressions(manifest.expressions ?? {});
         } catch {
           setPreview("");
           setModelUrl("");
+          setModelId("");
+          setExpressions({});
         }
       }
     });
   }, [immersive, friend?.visual_pack_id]);
+
+  useEffect(() => {
+    if (!immersive || !lastAssistant || lastAssistant.mood) return;
+    if (classifiedRef.current === lastAssistant.id) return;
+    classifiedRef.current = lastAssistant.id;
+    void classifyMessage(lastAssistant.id);
+  }, [immersive, lastAssistant?.id, lastAssistant?.mood, classifyMessage]);
 
   useEffect(() => {
     setIndex(0);
@@ -767,10 +805,10 @@ function ImmersiveOverlay() {
           }
         }}
       >
-        {preview && (
+        {displayPreview && (
           <img
             className="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover opacity-20 blur-2xl"
-            src={preview}
+            src={displayPreview}
             alt=""
           />
         )}
@@ -778,13 +816,15 @@ function ImmersiveOverlay() {
           {friend.visual_mode === "live2d" && modelUrl ? (
             <Live2DCharacter
               modelUrl={modelUrl}
+              modelId={modelId}
+              mood={currentMood}
               speaking={sending || lastAssistant?.status === "streaming"}
               className="max-h-[82vh] max-w-[72vw]"
             />
-          ) : preview ? (
+          ) : displayPreview ? (
             <img
               className="max-h-[82vh] max-w-[72vw] object-contain drop-shadow-[0_20px_60px_rgba(0,0,0,0.55)]"
-              src={preview}
+              src={displayPreview}
               alt={friend.name}
             />
           ) : (

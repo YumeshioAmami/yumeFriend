@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   assetUrl,
+  classifyMessageMoods,
   listFriends,
   listMessages,
   listVisualPacks,
@@ -14,9 +15,13 @@ export default function PetWindow() {
   const [friend, setFriend] = useState<Friend | null>(null);
   const [preview, setPreview] = useState("");
   const [modelUrl, setModelUrl] = useState("");
+  const [modelId, setModelId] = useState("");
+  const [expressions, setExpressions] = useState<Record<string, string>>({});
+  const [mood, setMood] = useState<string | null>(null);
   const [latest, setLatest] = useState<Message | null>(null);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const classifiedRef = useRef("");
 
   useEffect(() => {
     void Promise.all([listFriends(), listVisualPacks()]).then(([friends, packs]) => {
@@ -30,12 +35,18 @@ export default function PetWindow() {
           const manifest = JSON.parse(pack.manifest_json) as {
             preview_url?: string;
             model_url?: string;
+            model_id?: string;
+            expressions?: Record<string, string>;
           };
           setPreview(manifest.preview_url ?? "");
           setModelUrl(manifest.model_url ?? "");
+          setModelId(manifest.model_id ?? "");
+          setExpressions(manifest.expressions ?? {});
         } catch {
           setPreview("");
           setModelUrl("");
+          setModelId("");
+          setExpressions({});
         }
       }
     });
@@ -51,6 +62,21 @@ export default function PetWindow() {
     const timer = window.setInterval(() => void poll(), 3000);
     return () => window.clearInterval(timer);
   }, [friend]);
+
+  useEffect(() => {
+    if (!latest || latest.status !== "completed" || latest.mood) {
+      setMood(latest?.mood ?? null);
+      return;
+    }
+    if (classifiedRef.current === latest.id) return;
+    classifiedRef.current = latest.id;
+    void classifyMessageMoods(latest.id).then((result) => {
+      setMood(result.mood);
+      setLatest((current) =>
+        current ? { ...current, mood: result.mood, segments: result.segments } : current,
+      );
+    });
+  }, [latest?.id, latest?.status, latest?.mood]);
 
   const submit = () => {
     if (!friend || !draft.trim() || sending) return;
@@ -70,11 +96,17 @@ export default function PetWindow() {
         {modelUrl ? (
           <Live2DCharacter
             modelUrl={modelUrl}
+            modelId={modelId}
+            mood={mood}
             speaking={latest?.status === "streaming"}
             className="h-full w-full"
           />
         ) : preview ? (
-          <img src={preview} alt={friend?.name ?? ""} draggable={false} />
+          <img
+            src={expressions[mood ?? ""] || preview}
+            alt={friend?.name ?? ""}
+            draggable={false}
+          />
         ) : (
           <div className="pet-face">{friend?.name.slice(0, 1) ?? "?"}</div>
         )}

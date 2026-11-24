@@ -1,0 +1,629 @@
+{
+  "version": 2,
+  "model_id": "3c384bb881607f7b",
+  "display_name": "YUI",
+  "default_label": "正常",
+  "transition_ms": 320,
+  "base": {
+    "ParamEyeLOpen": 1.0,
+    "ParamEyeROpen": 1.0,
+    "ParamEyeLSmile": 0.0,
+    "ParamEyeRSmile": 0.0,
+    "ParamEyeSmile": 0.0,
+    "ParamEyeAnger": 0.0,
+    "ParamEyePuff": 0.0,
+    "ParamMouthForm": 0.0,
+    "ParamMouthOpenY": 0.0,
+    "ParamCheek": 0.0,
+    "ParamBrowLY": 0.0,
+    "ParamBrowRY": 0.0,
+    "ParamBrowLAngle": 0.0,
+    "ParamBrowRAngle": 0.0,
+    "ParamBrowLForm": 0.0,
+    "ParamBrowRForm": 0.0,
+    "ParamEyeBallX": 0.0,
+    "ParamEyeBallY": 0.0,
+    "ParamMouthX": 0.0,
+    "ParamAngleX": 0.0,
+    "ParamAngleY": 0.0,
+    "ParamAngleZ": 0.0,
+    "ParamBodyAngleX": 0.0,
+    "ParamBodyAngleY": 0.0,
+    "ParamBodyAngleZ": 0.0,
+    "ParamBreath": 0.5,
+    "ParamHairFront": 0.0,
+    "ParamHairSide": 0.0,
+    "ParamHairBack": 0.0,
+    "PARAM_EXP1": 0.0,
+    "PARAM_EXP2": 0.0,
+    "PARAM_EXP3": 0.0,
+    "PARAM_EXP4": 0.0,
+    "PARAM_EXP5": 0.0,
+    "PARAM_EXP6": 0.0,
+    "PARAM_EXP7": 0.0,
+    "PARAM_EXP8": 0.0,
+    "Paramcol_3": 1.0
+  },
+  "labels": [
+    {
+      "id": "高兴",
+      "name": "高兴",
+      "aliases": [
+        "开心",
+        "愉快"
+      ],
+      "params": {
+        "ParamEyeLOpen": 1.0,
+        "ParamEyeROpen": 1.0,
+        "ParamEyeLSmile": 0.0,
+        "ParamEyeRSmile": 0.0,
+        "ParamEyeSmile": 0.0,
+        "ParamMouthForm": 0.8,
+        "ParamMouthOpenY": 0.55,
+        "ParamCheek": 0.7,
+        "ParamBrowLY": 0.25,
+        "ParamBrowRY": 0.25,
+        "ParamAngleX": 2.0,
+        "ParamAngleY": -2.0,
+        "ParamBodyAngleX": 1.5,
+        "PARAM_EXP4": 1.0
+      },
+      "expressions": [
+        "z1"
+      ],
+      "transition_ms": null
+    },
+    {
+      "id": "兴奋",
+      "name": "兴奋",
+      "aliases": [],
+      "params": {
+        "ParamEyeLOpen": 0.95,
+        "ParamEyeROpen": 0.95,
+        "ParamEyeLSmile": 1.0,
+        "ParamEyeRSmile": 1.0,
+        "ParamEyeSmile": 1.0,
+        "ParamMouthForm": 0.95,
+        "ParamMouthOpenY": 0.6,
+        "ParamCheek": 0.95,
+        "ParamBrowLY": 0.55,
+        "ParamBrowRY": 0.55,
+        "ParamAngleX": 5.0,
+        "ParamAngleY": -6.0,
+        "ParamAngleZ": -10.0,
+        "ParamBodyAngleX": 4.2,
+        "PARAM_EXP2": 1.0,
+        "PARAM_EXP8": 1.0
+      },
+      "expressions": [
+        "z1",
+        "xxy"
+      ],
+      "transition_ms": null
+    },
+    {
+      "id": "平静",
+      "name": "平静",
+      "aliases": [],
+      "params": {
+        "ParamEyeLOpen": 0.75,
+        "ParamEyeROpen": 0.75,
+        "ParamMouthForm": 0.05,
+        "ParamMouthOpenY": 0.02,
+        "ParamAngleY": 2.0,
+        "ParamBreath": 0.45
+      },
+      "expressions": [
+        "bzy"
+      ],
+      "transition_ms": null
+    },
+    {
+      "id": "正常",
+      "name": "正常",
+      "aliases": [],
+      "params": {
+        "ParamEyeLOpen": 1.0,
+        "ParamEyeROpen": 1.0,
+        "ParamMouthForm": 0.1,
+        "ParamMouthOpenY": 0.02,
+        "ParamAngleX": 0.5,
+        "ParamBodyAngleX": 0.3
+      },
+      "expressions": [],
+      "transition_ms": null
+    },
+    {
+      "id": "害羞",
+      "name": "害羞",
+      "aliases": [
+        "不好意思"
+      ],
+      "params": {
+        "ParamEyeLOpen": 0.3,
+        "ParamEyeROpen": 0.3,
+        "ParamEyeSmile": 0.7,
+        "ParamEyeLSmile": 0.6,
+        "ParamEyeRSmile": 0.6,
+        "ParamMouthForm": 0.45,
+        "ParamMouthOpenY": 0.08,
+        "ParamCheek": 1.0,
+        "ParamBrowLY": -0.25,
+        "ParamBrowRY": -0.25,
+        "ParamAngleX": -4.0,
+        "ParamAngleY": 6.0,
+        "ParamAngleZ": 12.0,
+        "ParamEyeBallX": -0.25,
+        "ParamEyeBallY": -0.22,
+        "PARAM_EXP4": 1.0,
+        "PARAM_EXP7": -1.0
+      },
+      "expressions": [
+        "by",
+        "swz"
+      ],
+      "transition_ms": null
+    },
+    {
+      "id": "羞耻",
+      "name": "羞耻",
+      "aliases": [],
+      "params": {
+        "ParamEyeLOpen": 0.18,
+        "ParamEyeROpen": 0.18,
+        "ParamEyeSmile": 0.4,
+        "ParamEyeLSmile": 0.35,
+        "ParamEyeRSmile": 0.35,
+        "ParamMouthForm": 0.15,
+        "ParamMouthOpenY": 0.04,
+        "ParamCheek": 1.0,
+        "ParamBrowLY": -0.4,
+        "ParamBrowRY": -0.4,
+        "ParamBrowLAngle": -0.15,
+        "ParamBrowRAngle": 0.15,
+        "ParamAngleX": -5.0,
+        "ParamAngleY": 10.0,
+        "ParamAngleZ": 14.0,
+        "ParamEyeBallX": -0.32,
+        "ParamEyeBallY": -0.3,
+        "PARAM_EXP4": 1.0,
+        "PARAM_EXP3": 1.0,
+        "PARAM_EXP7": -1.0
+      },
+      "expressions": [
+        "by",
+        "swz",
+        "sweat"
+      ],
+      "transition_ms": null
+    },
+    {
+      "id": "心动",
+      "name": "心动",
+      "aliases": [
+        "爱慕",
+        "喜欢"
+      ],
+      "params": {
+        "ParamEyeLOpen": 0.45,
+        "ParamEyeROpen": 0.45,
+        "ParamEyeSmile": 1.0,
+        "ParamEyeLSmile": 1.0,
+        "ParamEyeRSmile": 1.0,
+        "ParamMouthForm": 0.8,
+        "ParamMouthOpenY": 0.14,
+        "ParamCheek": 1.0,
+        "ParamAngleX": 4.0,
+        "ParamAngleY": 3.0,
+        "ParamAngleZ": 8.0,
+        "ParamBodyAngleX": 1.8,
+        "ParamEyeBallX": 0.2,
+        "ParamEyeBallY": -0.16,
+        "PARAM_EXP4": 1.0,
+        "PARAM_EXP7": 1.0,
+        "PARAM_EXP5": -1.0
+      },
+      "expressions": [
+        "xxy",
+        "sbx"
+      ],
+      "transition_ms": null
+    },
+    {
+      "id": "担心",
+      "name": "担心",
+      "aliases": [],
+      "params": {
+        "ParamEyeLOpen": 0.55,
+        "ParamEyeROpen": 0.55,
+        "ParamEyeSmile": -0.6,
+        "ParamMouthForm": -0.7,
+        "ParamMouthOpenY": 0.04,
+        "ParamBrowLY": 0.25,
+        "ParamBrowRY": 0.25,
+        "ParamBrowLAngle": 0.65,
+        "ParamBrowRAngle": -0.65,
+        "ParamAngleX": -5.0,
+        "ParamAngleY": 10.0,
+        "ParamAngleZ": 5.0,
+        "ParamBodyAngleX": -2.5,
+        "ParamEyeBallY": -0.2,
+        "PARAM_EXP7": -1.0
+      },
+      "expressions": [
+        "z2",
+        "sweat"
+      ],
+      "transition_ms": null
+    },
+    {
+      "id": "伤心",
+      "name": "伤心",
+      "aliases": [
+        "难过",
+        "委屈"
+      ],
+      "params": {
+        "ParamEyeLOpen": 0.15,
+        "ParamEyeROpen": 0.15,
+        "ParamEyeSmile": -1.0,
+        "ParamMouthForm": -0.95,
+        "ParamMouthOpenY": 0.03,
+        "ParamBrowLY": -0.65,
+        "ParamBrowRY": -0.65,
+        "ParamBrowLAngle": -0.6,
+        "ParamBrowRAngle": 0.6,
+        "ParamAngleX": -7.0,
+        "ParamAngleY": 12.0,
+        "ParamAngleZ": 4.0,
+        "ParamBodyAngleX": -4.5,
+        "ParamEyeBallY": -0.32,
+        "PARAM_EXP7": -1.0,
+        "PARAM_EXP8": -1.0
+      },
+      "expressions": [
+        "slh"
+      ],
+      "transition_ms": null
+    },
+    {
+      "id": "无奈",
+      "name": "无奈",
+      "aliases": [],
+      "params": {
+        "ParamEyeLOpen": 0.35,
+        "ParamEyeROpen": 0.35,
+        "ParamEyeSmile": -0.5,
+        "ParamMouthForm": -0.65,
+        "ParamMouthOpenY": 0.06,
+        "ParamMouthX": 0.35,
+        "ParamBrowLY": 0.3,
+        "ParamBrowRY": 0.1,
+        "ParamBrowLAngle": 0.35,
+        "ParamBrowRAngle": -0.35,
+        "ParamAngleX": -4.0,
+        "ParamAngleY": 8.0,
+        "ParamAngleZ": -8.0,
+        "ParamBodyAngleX": -2.2,
+        "ParamEyeBallX": 0.15,
+        "PARAM_EXP1": 1.0,
+        "PARAM_EXP7": -1.0
+      },
+      "expressions": [
+        "wy",
+        "slh"
+      ],
+      "transition_ms": null
+    },
+    {
+      "id": "生气",
+      "name": "生气",
+      "aliases": [
+        "愤怒"
+      ],
+      "params": {
+        "ParamEyeLOpen": 0.45,
+        "ParamEyeROpen": 0.45,
+        "ParamEyeSmile": -0.9,
+        "ParamEyeAnger": -1.0,
+        "ParamMouthForm": -0.95,
+        "ParamMouthOpenY": 0.1,
+        "ParamMouthX": -0.15,
+        "ParamBrowLAngle": -1.0,
+        "ParamBrowRAngle": 1.0,
+        "ParamBrowLY": 0.3,
+        "ParamBrowRY": 0.3,
+        "ParamAngleX": 4.0,
+        "ParamAngleY": 8.0,
+        "ParamAngleZ": -7.0,
+        "ParamBodyAngleX": 4.5,
+        "ParamEyeBallX": 0.25,
+        "PARAM_EXP3": 1.0,
+        "PARAM_EXP5": -1.0,
+        "PARAM_EXP2": -1.0
+      },
+      "expressions": [
+        "z3"
+      ],
+      "transition_ms": null
+    },
+    {
+      "id": "厌恶",
+      "name": "厌恶",
+      "aliases": [],
+      "params": {
+        "ParamEyeLOpen": 0.28,
+        "ParamEyeROpen": 0.28,
+        "ParamEyeSmile": -1.0,
+        "ParamEyeAnger": -0.7,
+        "ParamMouthForm": -0.8,
+        "ParamMouthOpenY": 0.06,
+        "ParamMouthX": -0.4,
+        "ParamBrowLY": 0.45,
+        "ParamBrowRY": 0.2,
+        "ParamBrowLAngle": 0.2,
+        "ParamBrowRAngle": -0.5,
+        "ParamAngleX": -4.0,
+        "ParamAngleY": 14.0,
+        "ParamAngleZ": -10.0,
+        "ParamBodyAngleX": -3.2,
+        "ParamEyeBallX": 0.3,
+        "ParamEyeBallY": 0.1,
+        "PARAM_EXP3": 1.0,
+        "PARAM_EXP1": 1.0,
+        "PARAM_EXP8": -1.0
+      },
+      "expressions": [
+        "wy",
+        "z3"
+      ],
+      "transition_ms": null
+    },
+    {
+      "id": "惊讶",
+      "name": "惊讶",
+      "aliases": [],
+      "params": {
+        "ParamEyeLOpen": 1.0,
+        "ParamEyeROpen": 1.0,
+        "ParamEyeSmile": 0.0,
+        "ParamEyeAnger": 1.0,
+        "ParamMouthOpenY": 0.8,
+        "ParamMouthForm": 0.1,
+        "ParamBrowLY": 0.7,
+        "ParamBrowRY": 0.7,
+        "ParamAngleX": 2.0,
+        "ParamAngleY": -10.0,
+        "ParamAngleZ": 5.0,
+        "ParamEyeBallY": 0.25,
+        "PARAM_EXP5": 1.0,
+        "PARAM_EXP8": 1.0
+      },
+      "expressions": [
+        "z2"
+      ],
+      "transition_ms": null
+    },
+    {
+      "id": "害怕",
+      "name": "害怕",
+      "aliases": [],
+      "params": {
+        "ParamEyeLOpen": 1.0,
+        "ParamEyeROpen": 1.0,
+        "ParamEyeSmile": -0.6,
+        "ParamEyeAnger": 0.5,
+        "ParamMouthForm": -0.4,
+        "ParamMouthOpenY": 0.5,
+        "ParamBrowLY": 0.55,
+        "ParamBrowRY": 0.55,
+        "ParamBrowLAngle": 0.35,
+        "ParamBrowRAngle": -0.35,
+        "ParamAngleX": 3.0,
+        "ParamAngleY": 6.0,
+        "ParamAngleZ": -6.0,
+        "ParamBodyAngleX": -3.5,
+        "ParamEyeBallY": 0.15,
+        "ParamEyePuff": 0.25,
+        "PARAM_EXP5": 1.0,
+        "PARAM_EXP7": -1.0
+      },
+      "expressions": [
+        "by",
+        "z2",
+        "sweat"
+      ],
+      "transition_ms": null
+    },
+    {
+      "id": "慌张",
+      "name": "慌张",
+      "aliases": [],
+      "params": {
+        "ParamEyeLOpen": 0.95,
+        "ParamEyeROpen": 0.95,
+        "ParamEyeSmile": -0.6,
+        "ParamEyeAnger": 0.8,
+        "ParamMouthForm": -0.5,
+        "ParamMouthOpenY": 0.35,
+        "ParamBrowLY": 0.45,
+        "ParamBrowRY": 0.45,
+        "ParamBrowLAngle": 0.3,
+        "ParamBrowRAngle": -0.3,
+        "ParamAngleX": -1.0,
+        "ParamAngleY": 4.0,
+        "ParamAngleZ": -10.0,
+        "ParamBodyAngleX": -2.5,
+        "ParamEyeBallX": 0.35,
+        "ParamEyeBallY": 0.2,
+        "PARAM_EXP5": 1.0,
+        "PARAM_EXP8": 1.0
+      },
+      "expressions": [
+        "by",
+        "z2",
+        "sweat"
+      ],
+      "transition_ms": null
+    },
+    {
+      "id": "紧张",
+      "name": "紧张",
+      "aliases": [
+        "不安",
+        "焦虑"
+      ],
+      "params": {
+        "ParamEyeLOpen": 0.65,
+        "ParamEyeROpen": 0.65,
+        "ParamEyeSmile": -0.4,
+        "ParamEyeAnger": 0.2,
+        "ParamMouthForm": -0.5,
+        "ParamMouthOpenY": 0.06,
+        "ParamBrowLY": 0.2,
+        "ParamBrowRY": 0.2,
+        "ParamAngleX": 0.0,
+        "ParamAngleY": 4.0,
+        "ParamAngleZ": 6.0,
+        "ParamBodyAngleX": -1.8,
+        "ParamBodyAngleZ": 2.0,
+        "ParamEyeBallX": 0.35,
+        "ParamEyePuff": 0.45,
+        "PARAM_EXP7": -1.0,
+        "PARAM_EXP8": -1.0
+      },
+      "expressions": [
+        "swz",
+        "sweat"
+      ],
+      "transition_ms": null
+    },
+    {
+      "id": "疑惑",
+      "name": "疑惑",
+      "aliases": [
+        "困惑"
+      ],
+      "params": {
+        "ParamEyeLOpen": 0.85,
+        "ParamEyeROpen": 0.65,
+        "ParamEyeSmile": -0.1,
+        "ParamEyeAnger": 0.2,
+        "ParamBrowLY": 0.7,
+        "ParamBrowRY": -0.25,
+        "ParamBrowLAngle": 0.15,
+        "ParamBrowRAngle": 0.5,
+        "ParamMouthForm": -0.25,
+        "ParamMouthOpenY": 0.06,
+        "ParamAngleX": 7.0,
+        "ParamAngleY": 2.0,
+        "ParamAngleZ": -12.0,
+        "ParamEyeBallX": 0.25,
+        "ParamEyeBallY": 0.12,
+        "PARAM_EXP5": 1.0,
+        "PARAM_EXP1": 1.0
+      },
+      "expressions": [
+        "slh",
+        "bzy"
+      ],
+      "transition_ms": null
+    },
+    {
+      "id": "认真",
+      "name": "认真",
+      "aliases": [],
+      "params": {
+        "ParamEyeLOpen": 0.85,
+        "ParamEyeROpen": 0.85,
+        "ParamEyeSmile": -0.2,
+        "ParamEyeAnger": 0.1,
+        "ParamMouthForm": -0.6,
+        "ParamMouthOpenY": 0.02,
+        "ParamBrowLY": -0.35,
+        "ParamBrowRY": -0.35,
+        "ParamBrowLAngle": -0.3,
+        "ParamBrowRAngle": 0.3,
+        "ParamAngleY": 3.0,
+        "ParamBodyAngleX": 0.8,
+        "ParamEyeBallY": -0.1
+      },
+      "expressions": [
+        "bzy"
+      ],
+      "transition_ms": null
+    },
+    {
+      "id": "自信",
+      "name": "自信",
+      "aliases": [],
+      "params": {
+        "ParamEyeLOpen": 0.45,
+        "ParamEyeROpen": 0.45,
+        "ParamEyeSmile": 0.6,
+        "ParamEyeLSmile": 0.6,
+        "ParamEyeRSmile": 0.6,
+        "ParamMouthForm": 0.7,
+        "ParamMouthOpenY": 0.08,
+        "ParamBrowLY": 0.05,
+        "ParamBrowRY": 0.35,
+        "ParamAngleX": 4.0,
+        "ParamAngleY": 2.0,
+        "ParamAngleZ": 9.0,
+        "ParamEyeBallX": 0.2,
+        "PARAM_EXP1": 1.0,
+        "PARAM_EXP5": -1.0
+      },
+      "expressions": [
+        "z1"
+      ],
+      "transition_ms": null
+    },
+    {
+      "id": "调皮",
+      "name": "调皮",
+      "aliases": [],
+      "params": {
+        "ParamEyeLOpen": 0.55,
+        "ParamEyeROpen": 0.55,
+        "ParamEyeSmile": 0.8,
+        "ParamEyeLSmile": 0.8,
+        "ParamEyeRSmile": 0.8,
+        "ParamMouthForm": 0.65,
+        "ParamMouthOpenY": 0.1,
+        "ParamCheek": 0.35,
+        "ParamBrowLY": 0.1,
+        "ParamBrowRY": 0.4,
+        "ParamAngleX": 4.0,
+        "ParamAngleY": 2.0,
+        "ParamAngleZ": 9.0,
+        "ParamEyeBallX": 0.2,
+        "PARAM_EXP1": 1.0,
+        "PARAM_EXP2": 1.0
+      },
+      "expressions": [
+        "z1",
+        "xxy"
+      ],
+      "transition_ms": null
+    }
+  ],
+  "idle": {
+    "enabled": true,
+    "head_x": 2.0,
+    "head_y": 1.2,
+    "head_z": 1.5,
+    "body_x": 1.2,
+    "body_z": 0.8,
+    "gaze_x": 0.14,
+    "gaze_y": 0.1,
+    "breath": 0.24
+  },
+  "speech": {
+    "enabled": true,
+    "text_ms_per_char": 160,
+    "min_ms": 600,
+    "max_ms": 12000,
+    "mouth_open": 0.24
+  }
+}

@@ -66,7 +66,16 @@ async def message_with_assets(core: CoreClient, message: dict[str, Any]) -> dict
         (item["asset_id"] for item in assets.get("items", []) if item.get("role") == "voice"),
         None,
     )
-    return {**message, "image_asset_ids": images, "voice_asset_id": voice}
+    try:
+        segments = json.loads(message.get("segments_json") or "[]")
+    except json.JSONDecodeError:
+        segments = []
+    return {
+        **message,
+        "image_asset_ids": images,
+        "voice_asset_id": voice,
+        "segments": segments,
+    }
 
 
 async def attach_asset(

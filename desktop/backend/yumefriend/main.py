@@ -20,7 +20,12 @@ from pydantic import BaseModel
 from yumefriend import __version__
 from yumefriend.assets import asset_data_url
 from yumefriend.assets import router as assets_router
-from yumefriend.chat import StreamRegistry, generate_reply, load_model_config
+from yumefriend.chat import (
+    StreamRegistry,
+    classify_message_moods,
+    generate_reply,
+    load_model_config,
+)
 from yumefriend.context import load_prompt_context
 from yumefriend.core import CoreClient
 from yumefriend.features import router
@@ -31,6 +36,7 @@ from yumefriend.live2d_runtime import router as live2d_runtime_router
 from yumefriend.media import attach_asset, message_with_assets
 from yumefriend.media import router as media_router
 from yumefriend.tools import router as tools_router
+from yumefriend.visual import model_id_for_url
 from yumefriend.visual import router as visual_router
 
 
@@ -110,8 +116,48 @@ def get_core(request: Request) -> CoreClient:
 
 async def seed_default_visuals(core: CoreClient) -> None:
     result = await core.read("visual", "visual_packs", limit=100)
-    names = {item.get("name") for item in result.get("items", [])}
-    if "YUI" not in names:
+    packs = {item.get("name"): item for item in result.get("items", [])}
+    yui_manifest = json.dumps(
+        {
+            "preview_url": "./live2d/yui/preview.png",
+            "model_url": "./live2d/yui/yui-origin.model3.json",
+            "model_id": model_id_for_url("./live2d/yui/yui-origin.model3.json"),
+        },
+        ensure_ascii=False,
+    )
+    moods = [
+        "高兴",
+        "兴奋",
+        "平静",
+        "正常",
+        "害羞",
+        "羞耻",
+        "心动",
+        "担心",
+        "伤心",
+        "无奈",
+        "生气",
+        "厌恶",
+        "惊讶",
+        "害怕",
+        "慌张",
+        "紧张",
+        "疑惑",
+        "认真",
+        "自信",
+        "调皮",
+    ]
+    portrait_manifest = json.dumps(
+        {
+            "preview_url": "./portraits/yui/正常.png",
+            "expressions": {
+                mood: f"./portraits/yui/{mood}.png"
+                for mood in moods
+            },
+        },
+        ensure_ascii=False,
+    )
+    if "YUI" not in packs:
         await core.write(
             "visual",
             "visual_packs",
@@ -119,16 +165,17 @@ async def seed_default_visuals(core: CoreClient) -> None:
             {
                 "kind": "live2d",
                 "name": "YUI",
-                "manifest_json": json.dumps(
-                    {
-                        "preview_url": "./live2d/yui/preview.png",
-                        "model_url": "./live2d/yui/yui-origin.model3.json",
-                    },
-                    ensure_ascii=False,
-                ),
+                "manifest_json": yui_manifest,
             },
         )
-    if "默认立绘" not in names:
+    elif packs["YUI"].get("manifest_json") != yui_manifest:
+        await core.write(
+            "visual",
+            "visual_packs",
+            "update",
+            {"id": packs["YUI"]["id"], "manifest_json": yui_manifest},
+        )
+    if "默认立绘" not in packs:
         await core.write(
             "visual",
             "visual_packs",
@@ -136,11 +183,15 @@ async def seed_default_visuals(core: CoreClient) -> None:
             {
                 "kind": "portrait",
                 "name": "默认立绘",
-                "manifest_json": json.dumps(
-                    {"preview_url": "./portrait.png"},
-                    ensure_ascii=False,
-                ),
+                "manifest_json": portrait_manifest,
             },
+        )
+    elif packs["默认立绘"].get("manifest_json") != portrait_manifest:
+        await core.write(
+            "visual",
+            "visual_packs",
+            "update",
+            {"id": packs["默认立绘"]["id"], "manifest_json": portrait_manifest},
         )
 
 
@@ -332,6 +383,7 @@ async def messages(request: Request, friend_id: str) -> dict[str, Any]:
         limit=200,
     )
     items = sorted(result.get("items", []), key=lambda item: item.get("created_at", ""))
+    items = [await message_with_assets(get_core(request), item) for item in items]
     return {"items": items, "next_cursor": None}
 
 
@@ -471,6 +523,14 @@ async def message_stream(request: Request, message_id: str) -> StreamingResponse
             streams.remove(message_id)
 
     return StreamingResponse(events(), media_type="text/event-stream")
+
+
+@app.post("/api/v1/messages/{message_id}/moods")
+async def message_moods(request: Request, message_id: str) -> dict[str, Any]:
+    try:
+        return await classify_message_moods(get_core(request), message_id)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 @app.get("/api/v1/settings")

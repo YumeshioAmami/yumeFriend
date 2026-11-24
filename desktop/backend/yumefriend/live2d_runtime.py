@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/v1/live2d/runtime")
 PRODUCT_ROOT = Path(__file__).resolve().parents[3]
 RUNTIME_DIR = PRODUCT_ROOT / "user_data" / "live2d" / "runtime"
 RUNTIME_FILE = RUNTIME_DIR / "live2dcubismcore.min.js"
-CORE_URL = "https://cubism.live2d.com/sdk-web/core/live2dcubismcore.min.js"
+CORE_URL = "https://cubism.live2d.com/sdk-web/core/05/live2dcubismcore.min.js"
 PROPRIETARY_LICENSE = (
     "https://www.live2d.com/eula/live2d-proprietary-software-license-agreement_en.html"
 )

@@ -22,6 +22,14 @@ export type Message = {
   created_at: string;
   image_asset_ids?: string[];
   voice_asset_id?: string | null;
+  mood?: string | null;
+  segments?: MoodUnit[];
+};
+
+export type MoodUnit = {
+  bubble: number;
+  text: string;
+  mood?: string | null;
 };
 
 export type Memory = {
@@ -159,6 +167,12 @@ export function sendMessage(
 
 export function streamUrl(messageId: string): string {
   return `${API_BASE}/messages/${messageId}/stream`;
+}
+
+export function classifyMessageMoods(
+  messageId: string,
+): Promise<{ mood: string | null; segments: MoodUnit[] }> {
+  return request(`/messages/${messageId}/moods`, { method: "POST" });
 }
 
 export function getSettings(): Promise<ListResult<{ key: string; value_json: string }>> {
@@ -458,6 +472,24 @@ export type Live2DRuntimeStatus = {
     open: string;
   };
 };
+
+export type Live2DSettings = {
+  default_label: string;
+  base: Record<string, number>;
+  labels: Array<{
+    id: string;
+    name: string;
+    params: Record<string, number>;
+    expressions: string[];
+    transition_ms?: number | null;
+  }>;
+};
+
+export function getLive2DSettings(
+  modelId: string,
+): Promise<{ settings: Live2DSettings }> {
+  return request(`/live2d/models/${modelId}/settings`);
+}
 
 export function getLive2DRuntimeStatus(): Promise<Live2DRuntimeStatus> {
   return request("/live2d/runtime/status");
