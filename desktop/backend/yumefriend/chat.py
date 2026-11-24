@@ -4,16 +4,22 @@ import asyncio
 import json
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from openai import AsyncOpenAI
 
+from yumefriend.assets import asset_data_url
 from yumefriend.context import PromptContext, style_text
 from yumefriend.core import CoreClient
-from yumefriend.media import message_with_assets
+from yumefriend.media import attach_asset, message_with_assets
+from yumefriend.tools import execute_tool, native_tool_specs
 from yumefriend.visual import labels_for_pack
 
 BUBBLE_SEPARATOR = "<<<MSG>>>"
+TOOL_OPEN = "<tool>"
+TOOL_CLOSE = "</tool>"
+MODULE_DIR = Path(__file__).resolve().parents[2] / "modules"
 
 
 @dataclass
@@ -52,6 +58,65 @@ class BubbleSeparatorParser:
         return "".join(visible)
 
     def flush(self) -> str:
+        text = self.buffer
+        self.buffer = ""
+        return text
+
+
+class ToolTagParser:
+    def __init__(self) -> None:
+        self.buffer = ""
+        self.in_tool = False
+        self.calls: list[dict[str, Any]] = []
+
+    def feed(self, text: str) -> str:
+        self.buffer += text
+        visible: list[str] = []
+        while True:
+            if self.in_tool:
+                end = self.buffer.find(TOOL_CLOSE)
+                if end < 0:
+                    break
+                raw = self.buffer[:end]
+                self.buffer = self.buffer[end + len(TOOL_CLOSE) :]
+                self.in_tool = False
+                try:
+                    parsed = json.loads(raw)
+                    if isinstance(parsed, dict) and parsed.get("name"):
+                        self.calls.append(
+                            {
+                                "name": str(parsed["name"]),
+                                "arguments": parsed.get("arguments") or {},
+                            }
+                        )
+                except json.JSONDecodeError:
+                    pass
+                continue
+            start = self.buffer.find(TOOL_OPEN)
+            if start >= 0:
+                visible.append(self.buffer[:start])
+                self.buffer = self.buffer[start + len(TOOL_OPEN) :]
+                self.in_tool = True
+                continue
+            keep = 0
+            for size in range(min(len(self.buffer), len(TOOL_OPEN) - 1), 0, -1):
+                if self.buffer.endswith(TOOL_OPEN[:size]):
+                    keep = size
+                    break
+            if keep:
+                visible.append(self.buffer[:-keep])
+                self.buffer = self.buffer[-keep:]
+            else:
+                visible.append(self.buffer)
+                self.buffer = ""
+            break
+        return "".join(visible)
+
+    def flush(self) -> str:
+        if self.in_tool:
+            self.buffer = ""
+            self.in_tool = False
+            return ""
         text = self.buffer
         self.buffer = ""
         return text
@@ -134,11 +199,72 @@ async def load_model_config(core: CoreClient) -> ModelConfig | None:
     return ModelConfig(base_url=base_url, api_key=api_key, model=model)
 
 
+async def load_tool_specs(core: CoreClient) -> list[dict[str, Any]]:
+    result = await core.read("settings", "settings", limit=200)
+    features: dict[str, Any] = {}
+    for item in result.get("items", []):
+        if item.get("key") == "features" and isinstance(item.get("value_json"), str):
+            try:
+                parsed = json.loads(item["value_json"])
+                if isinstance(parsed, dict):
+                    features = parsed
+            except json.JSONDecodeError:
+                pass
+
+    def module_enabled(module_id: str) -> bool:
+        if features.get(module_id) is False:
+            return False
+        path = MODULE_DIR / f"{module_id}.json"
+        if not path.is_file():
+            return False
+        try:
+            manifest = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return False
+        return bool(manifest.get("capabilities"))
+
+    return native_tool_specs(
+        enable_search=module_enabled("search"),
+        enable_screen=module_enabled("screen"),
+    )
+
+
+async def describe_image(
+    client: AsyncOpenAI,
+    config: ModelConfig,
+    asset_id: str,
+) -> str:
+    try:
+        response = await client.chat.completions.create(
+            model=config.model,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "用两三句话客观描述这张屏幕截图的主要内容，不要编造。",
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": asset_data_url(asset_id)},
+                        },
+                    ],
+                }
+            ],
+            temperature=0.2,
+        )
+        return (response.choices[0].message.content or "").strip()
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def build_prompt(
     friend: dict[str, Any],
     history: list[dict[str, Any]],
     context: PromptContext,
     image_urls: list[str] | None = None,
+    tool_specs: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     now = datetime.now().astimezone()
 
@@ -169,6 +295,19 @@ def build_prompt(
         section("你现在的状态", context.state),
         f"# 现在\n当前时间：{now.strftime('%Y-%m-%d %H:%M')}（周{'一二三四五六日'[now.weekday()]}）",
     ]
+    if tool_specs:
+        tool_lines = "\n".join(
+            f"- {spec['function']['name']}：{spec['function']['description']}"
+            for spec in tool_specs
+        )
+        blocks.insert(
+            -2,
+            "# 后台能力\n"
+            f"可用工具：\n{tool_lines}\n"
+            "优先使用原生工具调用；不支持时只允许写："
+            '<tool>{"name":"工具名","arguments":{...}}</tool>\n'
+            "一次最多调用两个工具；拿到结果后直接用正文回答；正文只写对话。",
+        )
     system = "\n\n".join(block for block in blocks if block)
     messages = [{"role": "system", "content": system}]
     for message in history[-40:]:
@@ -207,30 +346,189 @@ async def generate_reply(
     streams.push(message_id, {"type": "start", "data": {"message_id": message_id}})
     client = AsyncOpenAI(base_url=config.base_url or None, api_key=config.api_key)
     raw_content = ""
-    parser = BubbleSeparatorParser()
+    sources: list[dict[str, Any]] = []
+    tool_calls: list[dict[str, Any]] = []
+    screen_index = 0
     cancelled = False
     try:
-        try:
-            stream = await client.chat.completions.create(
-                model=config.model,
-                messages=build_prompt(friend, history, context, image_urls),
-                temperature=0.7,
-                stream=True,
-            )
-            async for chunk in stream:
-                delta = chunk.choices[0].delta.content or ""
-                if not delta:
-                    continue
-                raw_content += delta
-                visible = parser.feed(delta)
-                if visible:
-                    streams.push(message_id, {"type": "delta", "data": {"text": visible}})
-        except asyncio.CancelledError:
-            cancelled = True
+        tool_specs = await load_tool_specs(core)
+        messages = build_prompt(friend, history, context, image_urls, tool_specs)
+        for round_index in range(2):
+            tool_parser = ToolTagParser()
+            bubble_parser = BubbleSeparatorParser()
+            round_text = ""
+            native_calls: dict[int, dict[str, str]] = {}
+            kwargs: dict[str, Any] = {
+                "model": config.model,
+                "messages": messages,
+                "temperature": 0.7,
+                "stream": True,
+            }
+            if tool_specs and round_index == 0:
+                kwargs["tools"] = tool_specs
+            try:
+                try:
+                    stream = await client.chat.completions.create(**kwargs)
+                except Exception:
+                    if "tools" not in kwargs:
+                        raise
+                    kwargs.pop("tools")
+                    stream = await client.chat.completions.create(**kwargs)
+                async for chunk in stream:
+                    delta = chunk.choices[0].delta
+                    content = delta.content or ""
+                    if content:
+                        visible = tool_parser.feed(content)
+                        round_text += visible
+                        out = bubble_parser.feed(visible)
+                        if out:
+                            streams.push(
+                                message_id,
+                                {"type": "delta", "data": {"text": out}},
+                            )
+                    for call in delta.tool_calls or []:
+                        index = int(getattr(call, "index", 0) or 0)
+                        slot = native_calls.setdefault(
+                            index,
+                            {"id": "", "name": "", "arguments": ""},
+                        )
+                        if getattr(call, "id", None):
+                            slot["id"] = str(call.id)
+                        function = getattr(call, "function", None)
+                        if function is not None:
+                            if getattr(function, "name", None):
+                                slot["name"] = str(function.name)
+                            if getattr(function, "arguments", None):
+                                slot["arguments"] += str(function.arguments)
+            except asyncio.CancelledError:
+                cancelled = True
 
-        tail = parser.flush()
-        if tail:
-            streams.push(message_id, {"type": "delta", "data": {"text": tail}})
+            tail = tool_parser.flush()
+            round_text += tail
+            out = bubble_parser.feed(tail)
+            if out:
+                streams.push(message_id, {"type": "delta", "data": {"text": out}})
+            bubble_tail = bubble_parser.flush()
+            if bubble_tail:
+                streams.push(message_id, {"type": "delta", "data": {"text": bubble_tail}})
+            raw_content += round_text
+            if cancelled:
+                break
+
+            calls: list[dict[str, Any]] = []
+            for slot in native_calls.values():
+                if not slot["name"]:
+                    continue
+                try:
+                    arguments = json.loads(slot["arguments"] or "{}")
+                except json.JSONDecodeError:
+                    arguments = {}
+                calls.append(
+                    {
+                        "id": slot["id"] or f"tool_{len(tool_calls) + len(calls) + 1}",
+                        "name": slot["name"],
+                        "arguments": arguments,
+                        "native": True,
+                    }
+                )
+            if not calls:
+                for call in tool_parser.calls:
+                    calls.append(
+                        {
+                            "id": f"tool_{len(tool_calls) + len(calls) + 1}",
+                            "name": call["name"],
+                            "arguments": call["arguments"],
+                            "native": False,
+                        }
+                    )
+            if not calls:
+                break
+
+            results = []
+            for call in calls:
+                try:
+                    result, found_sources = await execute_tool(
+                        call["name"],
+                        call["arguments"],
+                        friend["id"],
+                    )
+                except Exception as error:  # noqa: BLE001
+                    result = {"error": str(error)}
+                    found_sources = []
+                sources.extend(found_sources)
+                tool_calls.append(
+                    {
+                        "name": call["name"],
+                        "arguments": call["arguments"],
+                        "result": result,
+                    }
+                )
+                if call["name"] == "look_screen" and result.get("asset_id"):
+                    result["description"] = await describe_image(
+                        client,
+                        config,
+                        str(result["asset_id"]),
+                    )
+                    await attach_asset(
+                        core,
+                        message_id,
+                        str(result["asset_id"]),
+                        "image",
+                        screen_index,
+                    )
+                    screen_index += 1
+                results.append(
+                    {
+                        "id": call["id"],
+                        "name": call["name"],
+                        "result": result,
+                    }
+                )
+
+            if any(call["native"] for call in calls):
+                messages.append(
+                    {
+                        "role": "assistant",
+                        "content": round_text or None,
+                        "tool_calls": [
+                            {
+                                "id": call["id"],
+                                "type": "function",
+                                "function": {
+                                    "name": call["name"],
+                                    "arguments": json.dumps(
+                                        call["arguments"],
+                                        ensure_ascii=False,
+                                    ),
+                                },
+                            }
+                            for call in calls
+                        ],
+                    }
+                )
+                for item in results:
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": item["id"],
+                            "content": json.dumps(item["result"], ensure_ascii=False),
+                        }
+                    )
+            else:
+                messages.append({"role": "assistant", "content": round_text or ""})
+                messages.append(
+                    {
+                        "role": "system",
+                        "content": "工具结果（后台）："
+                        + json.dumps(results, ensure_ascii=False),
+                    }
+                )
+            messages.append(
+                {
+                    "role": "system",
+                    "content": "工具结果已返回。现在只写正文回答，不要再调用工具。",
+                }
+            )
 
         final = await core.write(
             "chat",
@@ -240,6 +538,8 @@ async def generate_reply(
                 "id": message_id,
                 "content": visible_content(raw_content),
                 "segments_json": json.dumps(parse_units(raw_content), ensure_ascii=False),
+                "sources_json": json.dumps(sources, ensure_ascii=False),
+                "tool_calls_json": json.dumps(tool_calls, ensure_ascii=False),
                 "status": "partial" if cancelled else "completed",
             },
         )

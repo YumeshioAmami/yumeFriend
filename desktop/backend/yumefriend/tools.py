@@ -18,6 +18,32 @@ router = APIRouter(prefix="/api/v1")
 PRODUCT_ROOT = Path(__file__).resolve().parents[3]
 WORKSPACE = PRODUCT_ROOT / "user_data" / "workspace"
 
+TOOL_SPECS = {
+    "web_search": {
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": "联网搜索；返回标题、链接和摘要。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "搜索词"},
+                    "limit": {"type": "integer", "description": "结果数量，默认 5"},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    "look_screen": {
+        "type": "function",
+        "function": {
+            "name": "look_screen",
+            "description": "截取当前屏幕，返回图片附件。",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+}
+
 
 class SearchBody(BaseModel):
     query: str
@@ -74,12 +100,42 @@ async def bing_search(query: str, limit: int = 5) -> list[dict[str, Any]]:
     return items
 
 
-@router.post("/friends/{friend_id}/screen")
-async def screen(_: Request, friend_id: str) -> dict[str, Any]:
+def native_tool_specs(enable_search: bool = True, enable_screen: bool = True) -> list[dict[str, Any]]:
+    names = []
+    if enable_search:
+        names.append("web_search")
+    if enable_screen:
+        names.append("look_screen")
+    return [TOOL_SPECS[name] for name in names]
+
+
+def capture_screen_asset() -> dict[str, Any]:
     image = ImageGrab.grab()
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
-    asset = save_asset(buffer.getvalue(), "image/png", "image")
+    return save_asset(buffer.getvalue(), "image/png", "image")
+
+
+async def execute_tool(
+    name: str,
+    arguments: dict[str, Any],
+    friend_id: str,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    if name == "web_search":
+        items = await bing_search(
+            str(arguments.get("query") or ""),
+            int(arguments.get("limit") or 5),
+        )
+        return {"items": items}, items
+    if name == "look_screen":
+        asset = capture_screen_asset()
+        return {"asset_id": asset["id"], "description": ""}, []
+    raise ValueError(f"unknown tool: {name}")
+
+
+@router.post("/friends/{friend_id}/screen")
+async def screen(_: Request, friend_id: str) -> dict[str, Any]:
+    asset = capture_screen_asset()
     return {"asset_id": asset["id"], "description": ""}
 
 
