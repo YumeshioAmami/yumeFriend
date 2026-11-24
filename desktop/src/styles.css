@@ -608,6 +608,15 @@ html[data-pet="1"] #root {
   animation: none;
 }
 
+.pet-dragging .pet-preview {
+  animation: none;
+}
+
+.pet-dragging .pet-top-ui {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .pet-preview img {
   max-height: 100%;
   max-width: 100%;

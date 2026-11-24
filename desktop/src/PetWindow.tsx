@@ -36,11 +36,13 @@ export default function PetWindow() {
   const [hovered, setHovered] = useState(false);
   const [locked, setLocked] = useState(false);
   const [muted, setMuted] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const [scale, setScale] = useState(1);
   const classifiedRef = useRef("");
   const playedRef = useRef("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const dragRef = useRef<{ x: number; y: number; moved: boolean } | null>(null);
+  const dragFrame = useRef(0);
 
   const showPack = (pack?: VisualPack) => {
     setPreview("");
@@ -200,6 +202,7 @@ export default function PetWindow() {
   const startDrag = (event: ReactPointerEvent) => {
     if (locked) return;
     dragRef.current = { x: event.clientX, y: event.clientY, moved: false };
+    setDragging(true);
     event.currentTarget.setPointerCapture(event.pointerId);
     void window.yumeFriend?.beginPetDrag?.();
   };
@@ -214,13 +217,22 @@ export default function PetWindow() {
       return;
     }
     drag.moved = true;
-    void window.yumeFriend?.movePetDrag?.();
+    if (dragFrame.current) return;
+    dragFrame.current = window.requestAnimationFrame(() => {
+      dragFrame.current = 0;
+      if (dragRef.current?.moved) void window.yumeFriend?.movePetDrag?.();
+    });
   };
 
   const endDrag = (event: ReactPointerEvent) => {
     const drag = dragRef.current;
     dragRef.current = null;
     if (!drag) return;
+    if (dragFrame.current) {
+      window.cancelAnimationFrame(dragFrame.current);
+      dragFrame.current = 0;
+    }
+    setDragging(false);
     void window.yumeFriend?.endPetDrag?.();
     event.stopPropagation();
     if (drag.moved || locked) return;
@@ -256,7 +268,7 @@ export default function PetWindow() {
 
   return (
     <div
-      className={`pet-shell ${locked ? "pet-locked" : ""}`}
+      className={`pet-shell ${locked ? "pet-locked" : ""} ${dragging ? "pet-dragging" : ""}`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -267,7 +279,7 @@ export default function PetWindow() {
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
         onWheel={(event) => {
-          if (locked) return;
+          if (locked || dragging) return;
           event.stopPropagation();
           adjustScale(scale - event.deltaY / 800);
         }}
