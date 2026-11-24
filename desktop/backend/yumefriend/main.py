@@ -64,6 +64,7 @@ class FriendPatch(BaseModel):
     personality: str | None = None
     custom_instructions: str | None = None
     avatar_asset_id: str | None = None
+    voice_id: str | None = None
     visual_mode: str | None = None
     visual_pack_id: str | None = None
     life_enabled: int | None = None
