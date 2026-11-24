@@ -31,6 +31,7 @@ export default function PetWindow() {
   const [expressions, setExpressions] = useState<Record<string, string>>({});
   const [latest, setLatest] = useState<Message | null>(null);
   const [bubbleIndex, setBubbleIndex] = useState(0);
+  const [autoBubbleVisible, setAutoBubbleVisible] = useState(false);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
@@ -112,6 +113,16 @@ export default function PetWindow() {
   useEffect(() => {
     setBubbleIndex(0);
   }, [latest?.id]);
+
+  useEffect(() => {
+    if (!latest?.content) {
+      setAutoBubbleVisible(false);
+      return;
+    }
+    setAutoBubbleVisible(true);
+    const timer = window.setTimeout(() => setAutoBubbleVisible(false), 12000);
+    return () => window.clearTimeout(timer);
+  }, [latest?.id, latest?.status]);
 
   useEffect(() => {
     if (chatOpen) inputRef.current?.focus();
@@ -401,7 +412,25 @@ export default function PetWindow() {
         </div>
       )}
 
-      {locked && lockedText && (
+      {!locked && !chatOpen && autoBubbleVisible && currentBubble?.text && (
+        <div className="pet-chat-panel pet-auto pet-hit">
+          <div
+            className="pet-bubble"
+            onClick={() => {
+              if (bubbles.length > 1) {
+                setBubbleIndex((index) => (index + 1) % bubbles.length);
+              } else {
+                setAutoBubbleVisible(false);
+              }
+            }}
+          >
+            <div className="pet-name">{friend?.name}</div>
+            {currentBubble.text}
+          </div>
+        </div>
+      )}
+
+      {locked && autoBubbleVisible && lockedText && (
         <div className="pet-chat-panel pet-readonly pet-hit">
           <div className="pet-bubble">
             <div className="pet-name">{friend?.name}</div>

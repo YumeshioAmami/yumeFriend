@@ -166,8 +166,12 @@ export function createFriend(input: {
   });
 }
 
-export function listMessages(friendId: string): Promise<ListResult<Message>> {
-  return request(`/friends/${friendId}/messages`);
+export function listMessages(
+  friendId: string,
+  cursor?: string | null,
+): Promise<ListResult<Message>> {
+  const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
+  return request(`/friends/${friendId}/messages${query}`);
 }
 
 export function sendMessage(

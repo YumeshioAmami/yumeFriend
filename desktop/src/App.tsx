@@ -348,6 +348,9 @@ function SettingsModal() {
   const [modelTest, setModelTest] = useState("");
   const [updateVersion, setUpdateVersion] = useState("");
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
+  const [tab, setTab] = useState<
+    "models" | "appearance" | "voice" | "visual" | "features" | "update" | "about"
+  >("models");
 
   useEffect(() => {
     if (settingsOpen) setDraft(settings);
@@ -375,14 +378,49 @@ function SettingsModal() {
   if (!settingsOpen) return null;
   return (
     <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/15">
-      <form
-        className="modal-card max-h-[85vh] w-[560px] overflow-y-auto"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void saveSettings(draft);
-        }}
-      >
-        <h2 className="text-base font-medium text-stone-900">模型设置</h2>
+      <div className="modal-card flex h-[78vh] w-[780px] flex-col overflow-hidden p-0">
+        <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-3">
+          <h2 className="text-base font-medium text-stone-900">设置</h2>
+          <button
+            type="button"
+            className="text-xs text-[var(--muted)] hover:text-[var(--text)]"
+            onClick={() => setSettingsOpen(false)}
+          >
+            关闭
+          </button>
+        </div>
+        <div className="flex min-h-0 flex-1">
+          <nav className="w-[136px] shrink-0 border-r border-[var(--border)] p-2">
+            {([
+              ["models", "模型"],
+              ["appearance", "外观"],
+              ["voice", "语音"],
+              ["visual", "视觉"],
+              ["features", "功能"],
+              ["update", "更新"],
+              ["about", "关于"],
+            ] as const).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                className={`mb-1 w-full rounded-lg px-3 py-2 text-left text-xs ${
+                  tab === id
+                    ? "bg-[var(--accent-soft)] text-[var(--text)]"
+                    : "text-[var(--muted)] hover:bg-[var(--panel-2)] hover:text-[var(--text)]"
+                }`}
+                onClick={() => setTab(id)}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+          <div className="min-w-0 flex-1 overflow-y-auto p-5">
+        {tab === "models" && (
+          <section className="rounded-2xl border border-[var(--border)] bg-[var(--panel-2)] p-4">
+            <h3 className="text-sm font-medium text-[var(--text)]">聊天模型</h3>
+            <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+              朋友平时说话用的 OpenAI 兼容接口。填服务地址、密钥和模型名即可。
+            </p>
         <label className="mt-4 block text-xs text-stone-500">
           Base URL
           <input
@@ -438,6 +476,10 @@ function SettingsModal() {
           </button>
           {modelTest && <span className="text-xs text-[var(--muted)]">{modelTest}</span>}
         </div>
+          </section>
+        )}
+        {tab === "voice" && (
+          <>
         <div className="mt-4 border-t border-stone-200 pt-3 text-xs text-stone-500">语音 / 图片</div>
         <div className="mt-2 grid grid-cols-2 gap-2">
           {([
@@ -467,6 +509,25 @@ function SettingsModal() {
         <div className="mt-2">
           <VoiceSettings />
         </div>
+        <label className="mt-3 block text-xs text-stone-500">
+          语音保留天数
+          <input
+            type="number"
+            min="0"
+            className="mt-1 w-full rounded border border-stone-300 px-3 py-2 text-sm"
+            value={draft.voice_retention_days}
+            onChange={(event) =>
+              setDraft((current) => ({
+                ...current,
+                voice_retention_days: Number(event.target.value),
+              }))
+            }
+          />
+        </label>
+          </>
+        )}
+        {tab === "appearance" && (
+          <>
         <div className="mt-4 border-t border-stone-200 pt-3 text-xs text-stone-500">界面</div>
         <div className="mt-2 grid grid-cols-2 gap-2">
           <label className="text-xs text-stone-500">
@@ -485,22 +546,11 @@ function SettingsModal() {
               ))}
             </select>
           </label>
-          <label className="text-xs text-stone-500">
-            语音保留天数
-            <input
-              type="number"
-              min="0"
-              className="mt-1 w-full px-3 py-2 text-sm"
-              value={draft.voice_retention_days}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  voice_retention_days: Number(event.target.value),
-                }))
-              }
-            />
-          </label>
         </div>
+          </>
+        )}
+        {tab === "update" && (
+          <>
         <label className="mt-3 block text-xs text-stone-500">
           更新地址
           <input
@@ -558,25 +608,11 @@ function SettingsModal() {
               安装并重启
             </button>
           )}
-          <button
-            type="button"
-            className="rounded border border-stone-300 px-3 py-1.5 text-xs text-stone-600"
-            onClick={() => {
-              setPanel("logs");
-              setSettingsOpen(false);
-            }}
-          >
-            查看日志
-          </button>
-          <button
-            type="button"
-            className="rounded border border-stone-300 px-3 py-1.5 text-xs text-stone-600"
-            onClick={() => setLegalOpen(true)}
-          >
-            法律说明
-          </button>
           {updateStatus && <span className="text-xs text-stone-500">{updateStatus}</span>}
         </div>
+          </>
+        )}
+        {tab === "visual" && (
         <div className="mt-4 border-t border-stone-200 pt-3">
           <div className="mb-2 text-xs text-stone-500">Live2D 运行时</div>
           <div className="text-xs text-[var(--muted)]">
@@ -652,6 +688,8 @@ function SettingsModal() {
             </button>
           </div>
         </div>
+        )}
+        {tab === "features" && (
         <div className="mt-4 border-t border-stone-200 pt-3">
           <div className="mb-2 text-xs text-stone-500">功能开关</div>
           <div className="grid grid-cols-3 gap-2">
@@ -682,7 +720,39 @@ function SettingsModal() {
             ))}
           </div>
         </div>
-        <div className="mt-4 flex justify-end gap-2">
+        )}
+        {tab === "about" && (
+          <div className="space-y-3">
+            <section className="rounded-2xl border border-[var(--border)] bg-[var(--panel-2)] p-4">
+              <div className="text-sm font-medium text-[var(--text)]">yumeFriend</div>
+              <div className="mt-1 text-xs text-[var(--muted)]">
+                版本 {window.yumeFriend?.version ?? "0.1.0"}
+              </div>
+            </section>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="rounded border border-stone-300 px-3 py-1.5 text-xs text-stone-600"
+                onClick={() => {
+                  setPanel("logs");
+                  setSettingsOpen(false);
+                }}
+              >
+                查看日志
+              </button>
+              <button
+                type="button"
+                className="rounded border border-stone-300 px-3 py-1.5 text-xs text-stone-600"
+                onClick={() => setLegalOpen(true)}
+              >
+                法律说明
+              </button>
+            </div>
+          </div>
+        )}
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-[var(--border)] px-5 py-3">
           <button
             type="button"
             className="rounded border border-stone-300 px-3 py-2 text-sm text-stone-600"
@@ -690,11 +760,17 @@ function SettingsModal() {
           >
             取消
           </button>
-          <button className="rounded bg-stone-800 px-3 py-2 text-sm text-white">保存</button>
+          <button
+            type="button"
+            className="rounded bg-stone-800 px-3 py-2 text-sm text-white"
+            onClick={() => void saveSettings(draft)}
+          >
+            保存
+          </button>
         </div>
-      </form>
       <Live2DSettingsModal open={live2dOpen} onClose={() => setLive2dOpen(false)} />
       <LegalModal open={legalOpen} onClose={() => setLegalOpen(false)} />
+      </div>
     </div>
   );
 }
@@ -705,6 +781,8 @@ function Chat() {
     selectedId,
     messages,
     sending,
+    messageCursor,
+    loadOlderMessages,
     error,
     sendMessage,
     setPanel,
@@ -775,6 +853,16 @@ function Chat() {
       </div>
       <div className="chat-scroll">
         <div className="chat-inner">
+          {messageCursor && (
+            <div className="mb-4 text-center">
+              <button
+                className="rounded border border-[var(--border)] px-3 py-1 text-xs text-[var(--muted)] hover:text-[var(--text)]"
+                onClick={() => void loadOlderMessages()}
+              >
+                加载更早
+              </button>
+            </div>
+          )}
           {messages.length === 0 && (
             <div className="mt-16 text-center text-sm text-[var(--muted)]">还没有消息</div>
           )}

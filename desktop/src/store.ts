@@ -55,6 +55,7 @@ type AppState = {
   friends: Friend[];
   selectedId: string | null;
   messages: Message[];
+  messageCursor: string | null;
   settings: Settings;
   loading: boolean;
   sending: boolean;
@@ -85,6 +86,7 @@ type AppState = {
   setCallActive: (active: boolean) => void;
   refreshMessages: () => Promise<void>;
   refreshUnread: () => Promise<void>;
+  loadOlderMessages: () => Promise<void>;
   classifyMessage: (messageId: string) => Promise<void>;
   retryMessage: (messageId: string) => Promise<void>;
   stopMessage: (messageId: string) => Promise<void>;
@@ -115,6 +117,7 @@ export const useApp = create<AppState>((set, get) => ({
   friends: [],
   selectedId: null,
   messages: [],
+  messageCursor: null,
   settings: emptySettings,
   loading: false,
   sending: false,
@@ -142,6 +145,7 @@ export const useApp = create<AppState>((set, get) => ({
           ),
           selectedId,
           messages: messages.items,
+          messageCursor: messages.next_cursor,
         });
       } else {
         set({ friends: result.items, selectedId });
@@ -160,6 +164,7 @@ export const useApp = create<AppState>((set, get) => ({
       await markFriendRead(friendId);
       set((state) => ({
         messages: result.items,
+        messageCursor: result.next_cursor,
         friends: state.friends.map((friend) =>
           friend.id === friendId ? { ...friend, unread_count: 0 } : friend,
         ),
@@ -177,6 +182,7 @@ export const useApp = create<AppState>((set, get) => ({
         friends: [...state.friends, friend],
         selectedId: friend.id,
         messages: [],
+        messageCursor: null,
         createOpen: false,
       }));
     } catch (error) {
@@ -190,10 +196,10 @@ export const useApp = create<AppState>((set, get) => ({
       await deleteFriendApi(friendId);
       const friends = get().friends.filter((friend) => friend.id !== friendId);
       const selectedId = friends[0]?.id ?? null;
-      set({ friends, selectedId, messages: [], panel: null });
+      set({ friends, selectedId, messages: [], messageCursor: null, panel: null });
       if (selectedId) {
         const result = await listMessages(selectedId);
-        set({ messages: result.items });
+        set({ messages: result.items, messageCursor: result.next_cursor });
       }
     } catch (error) {
       set({ error: String(error) });
@@ -356,6 +362,7 @@ export const useApp = create<AppState>((set, get) => ({
       await markFriendRead(friendId);
       set((state) => ({
         messages: result.items,
+        messageCursor: result.next_cursor,
         friends: state.friends.map((friend) =>
           friend.id === friendId ? { ...friend, unread_count: 0 } : friend,
         ),
@@ -371,6 +378,21 @@ export const useApp = create<AppState>((set, get) => ({
       set({ friends: result.items });
     } catch {
       // keep current view
+    }
+  },
+
+  loadOlderMessages: async () => {
+    const friendId = get().selectedId;
+    const cursor = get().messageCursor;
+    if (!friendId || !cursor) return;
+    try {
+      const result = await listMessages(friendId, cursor);
+      set((state) => ({
+        messages: [...result.items, ...state.messages],
+        messageCursor: result.next_cursor,
+      }));
+    } catch (error) {
+      set({ error: String(error) });
     }
   },
 }));

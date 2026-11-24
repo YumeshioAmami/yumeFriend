@@ -651,16 +651,29 @@ async def start_reply(
 
 
 @app.get("/api/v1/friends/{friend_id}/messages")
-async def messages(request: Request, friend_id: str) -> dict[str, Any]:
-    result = await get_core(request).read(
+async def messages(request: Request, friend_id: str, cursor: str | None = None) -> dict[str, Any]:
+    core = get_core(request)
+    result = await core.read(
         "chat",
         "messages",
         filter={"friend_id": friend_id},
-        limit=200,
+        limit=10000,
     )
-    items = sorted(result.get("items", []), key=lambda item: item.get("created_at", ""))
-    items = [await message_with_assets(get_core(request), item) for item in items]
-    return {"items": items, "next_cursor": None}
+    all_items = sorted(
+        result.get("items", []),
+        key=lambda item: (item.get("created_at", ""), item.get("id", "")),
+    )
+    end = len(all_items)
+    if cursor:
+        end = next(
+            (index for index, item in enumerate(all_items) if item.get("id") == cursor),
+            end,
+        )
+    start = max(0, end - 200)
+    page = all_items[start:end]
+    items = [await message_with_assets(core, item) for item in page]
+    next_cursor = page[0]["id"] if start > 0 and page else None
+    return {"items": items, "next_cursor": next_cursor}
 
 
 @app.post("/api/v1/friends/{friend_id}/messages")
