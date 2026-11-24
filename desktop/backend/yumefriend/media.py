@@ -159,24 +159,7 @@ async def synthesize(request: Request, message_id: str) -> dict[str, Any]:
 @router.post("/friends/{friend_id}/draw")
 async def draw(request: Request, friend_id: str, draft: DrawDraft) -> dict[str, Any]:
     client = core(request)
-    base_url, api_key, model = await media_config(client, "image")
-    async with httpx.AsyncClient(timeout=180) as http:
-        response = await http.post(
-            f"{base_url}/images/generations",
-            headers={"Authorization": f"Bearer {api_key}"},
-            json={
-                "model": model,
-                "prompt": draft.prompt,
-                "size": "1024x1024",
-                "response_format": "b64_json",
-            },
-        )
-        response.raise_for_status()
-    payload = response.json()
-    encoded = payload.get("data", [{}])[0].get("b64_json")
-    if not encoded:
-        raise HTTPException(status_code=502, detail="图片生成结果为空")
-    asset = save_asset(base64.b64decode(encoded), "image/png", "image")
+    asset = await generate_image_asset(client, draft.prompt)
     message = await client.write(
         "chat",
         "messages",
@@ -193,6 +176,27 @@ async def draw(request: Request, friend_id: str, draft: DrawDraft) -> dict[str, 
     record = message["record"]
     await attach_asset(client, record["id"], asset["id"], "image")
     return await message_with_assets(client, record)
+
+
+async def generate_image_asset(core: CoreClient, prompt: str) -> dict[str, Any]:
+    base_url, api_key, model = await media_config(core, "image")
+    async with httpx.AsyncClient(timeout=180) as http:
+        response = await http.post(
+            f"{base_url}/images/generations",
+            headers={"Authorization": f"Bearer {api_key}"},
+            json={
+                "model": model,
+                "prompt": prompt,
+                "size": "1024x1024",
+                "response_format": "b64_json",
+            },
+        )
+        response.raise_for_status()
+    payload = response.json()
+    encoded = payload.get("data", [{}])[0].get("b64_json")
+    if not encoded:
+        raise HTTPException(status_code=502, detail="图片生成结果为空")
+    return save_asset(base64.b64decode(encoded), "image/png", "image")
 
 
 @router.get("/voices")

@@ -223,10 +223,17 @@ async def load_tool_specs(core: CoreClient) -> list[dict[str, Any]]:
             return False
         return bool(manifest.get("capabilities"))
 
-    return native_tool_specs(
-        enable_search=module_enabled("search"),
-        enable_screen=module_enabled("screen"),
+    module_ids = (
+        "search",
+        "screen",
+        "document",
+        "file",
+        "memory",
+        "schedule",
+        "thought",
+        "image",
     )
+    return native_tool_specs({module_id for module_id in module_ids if module_enabled(module_id)})
 
 
 async def describe_image(
@@ -348,7 +355,7 @@ async def generate_reply(
     raw_content = ""
     sources: list[dict[str, Any]] = []
     tool_calls: list[dict[str, Any]] = []
-    screen_index = 0
+    attachment_index = 0
     cancelled = False
     try:
         tool_specs = await load_tool_specs(core)
@@ -448,6 +455,7 @@ async def generate_reply(
             for call in calls:
                 try:
                     result, found_sources = await execute_tool(
+                        core,
                         call["name"],
                         call["arguments"],
                         friend["id"],
@@ -463,20 +471,21 @@ async def generate_reply(
                         "result": result,
                     }
                 )
-                if call["name"] == "look_screen" and result.get("asset_id"):
+                if call["name"] in {"look_screen", "look_image"} and result.get("asset_id"):
                     result["description"] = await describe_image(
                         client,
                         config,
                         str(result["asset_id"]),
                     )
+                if call["name"] in {"look_screen", "draw_image"} and result.get("asset_id"):
                     await attach_asset(
                         core,
                         message_id,
                         str(result["asset_id"]),
                         "image",
-                        screen_index,
+                        attachment_index,
                     )
-                    screen_index += 1
+                    attachment_index += 1
                 results.append(
                     {
                         "id": call["id"],
