@@ -15,3 +15,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "yumeFriend"
 include(":app")
+includeBuild(providers.gradleProperty("yumeCoreDir").orElse("../../yumeCore").get())
