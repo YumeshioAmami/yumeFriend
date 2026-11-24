@@ -30,6 +30,8 @@ export type Settings = {
   stt_model: string;
   image_model: string;
   update_url: string;
+  ui_scale: number;
+  voice_retention_days: number;
 };
 
 export type Theme = {
@@ -99,6 +101,8 @@ const emptySettings: Settings = {
   stt_model: "",
   image_model: "",
   update_url: "",
+  ui_scale: 1,
+  voice_retention_days: 30,
 };
 
 let voiceToken = 0;
@@ -238,7 +242,7 @@ export const useApp = create<AppState>((set, get) => ({
       const values: Settings = { ...emptySettings };
       for (const item of result.items) {
         if (item.key in values) {
-          values[item.key as keyof Settings] = JSON.parse(item.value_json);
+          (values as Record<string, unknown>)[item.key] = JSON.parse(item.value_json);
         }
         if (item.key === "theme") {
           set({ theme: JSON.parse(item.value_json) as Theme });
@@ -267,6 +271,8 @@ export const useApp = create<AppState>((set, get) => ({
       await saveSetting("stt_model", settings.stt_model);
       await saveSetting("image_model", settings.image_model);
       await saveSetting("update_url", settings.update_url);
+      await saveSetting("ui_scale", settings.ui_scale);
+      await saveSetting("voice_retention_days", settings.voice_retention_days);
       set({ settings, settingsOpen: false });
     } catch (error) {
       set({ error: String(error) });

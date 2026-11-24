@@ -143,7 +143,7 @@ export function VoiceSettings() {
             type="number"
             min="0.25"
             max="4"
-            step="0.1"
+            step="0.05"
             className="mt-1 w-full px-3 py-2 text-sm"
             value={draft.speed}
             onChange={(event) =>

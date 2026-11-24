@@ -6,6 +6,7 @@ import {
   getLive2DRuntimeStatus,
   listVisualPacks,
   synthesizeVoice,
+  testModel,
   transcribeAudio,
   uploadAsset,
   type Friend,
@@ -15,6 +16,7 @@ import {
 import { FeatureDrawer } from "./FeatureDrawer";
 import { Live2DCharacter } from "./Live2DCharacter";
 import { Live2DSettingsModal } from "./Live2DSettings";
+import { LegalModal } from "./LegalModal";
 import { useApp, type Settings, type Theme } from "./store";
 import { VoiceSettings } from "./VoiceSettings";
 
@@ -334,6 +336,10 @@ function SettingsModal() {
   const [runtimeProgress, setRuntimeProgress] = useState("");
   const [runtimeMessage, setRuntimeMessage] = useState("");
   const [live2dOpen, setLive2dOpen] = useState(false);
+  const [legalOpen, setLegalOpen] = useState(false);
+  const [modelTest, setModelTest] = useState("");
+  const [updateVersion, setUpdateVersion] = useState("");
+  const [updateDownloaded, setUpdateDownloaded] = useState(false);
 
   useEffect(() => {
     if (settingsOpen) setDraft(settings);
@@ -341,6 +347,22 @@ function SettingsModal() {
       void getLive2DRuntimeStatus().then(setRuntime).catch(() => setRuntime(null));
     }
   }, [settingsOpen, settings]);
+
+  useEffect(() => {
+    if (!settingsOpen) return;
+    return window.yumeFriend?.onUpdateStatus?.((status) => {
+      if (status.state === "downloading") {
+        setUpdateStatus(`下载中 ${Math.round(status.percent ?? 0)}%`);
+      }
+      if (status.state === "downloaded") {
+        setUpdateDownloaded(true);
+        setUpdateStatus(`已下载 ${status.version ?? ""}`);
+      }
+      if (status.state === "error") {
+        setUpdateStatus(status.message ?? "更新失败");
+      }
+    });
+  }, [settingsOpen]);
 
   if (!settingsOpen) return null;
   return (
@@ -386,6 +408,28 @@ function SettingsModal() {
             }
           />
         </label>
+        <div className="mt-2 flex items-center gap-2">
+          <button
+            type="button"
+            className="rounded border border-stone-300 px-3 py-1.5 text-xs text-stone-600"
+            onClick={async () => {
+              setModelTest("测试中…");
+              try {
+                const result = await testModel({
+                  base_url: draft.llm_base_url,
+                  api_key: draft.llm_api_key,
+                  model: draft.llm_model,
+                });
+                setModelTest(result.reply || "连通正常");
+              } catch (reason) {
+                setModelTest(String(reason));
+              }
+            }}
+          >
+            测试模型
+          </button>
+          {modelTest && <span className="text-xs text-[var(--muted)]">{modelTest}</span>}
+        </div>
         <div className="mt-4 border-t border-stone-200 pt-3 text-xs text-stone-500">语音 / 图片</div>
         <div className="mt-2 grid grid-cols-2 gap-2">
           {([
@@ -415,6 +459,40 @@ function SettingsModal() {
         <div className="mt-2">
           <VoiceSettings />
         </div>
+        <div className="mt-4 border-t border-stone-200 pt-3 text-xs text-stone-500">界面</div>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <label className="text-xs text-stone-500">
+            缩放
+            <select
+              className="mt-1 w-full px-3 py-2 text-sm"
+              value={draft.ui_scale}
+              onChange={(event) =>
+                setDraft((current) => ({ ...current, ui_scale: Number(event.target.value) }))
+              }
+            >
+              {[0.8, 0.9, 1, 1.1, 1.2].map((scale) => (
+                <option key={scale} value={scale}>
+                  {Math.round(scale * 100)}%
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-xs text-stone-500">
+            语音保留天数
+            <input
+              type="number"
+              min="0"
+              className="mt-1 w-full px-3 py-2 text-sm"
+              value={draft.voice_retention_days}
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  voice_retention_days: Number(event.target.value),
+                }))
+              }
+            />
+          </label>
+        </div>
         <label className="mt-3 block text-xs text-stone-500">
           更新地址
           <input
@@ -432,7 +510,14 @@ function SettingsModal() {
             onClick={async () => {
               try {
                 const result = await window.yumeFriend?.checkUpdate?.(draft.update_url);
-                setUpdateStatus(result?.version ? `发现 ${result.version}` : "已是最新");
+                if (!result?.version || result.version === window.yumeFriend?.version) {
+                  setUpdateVersion("");
+                  setUpdateStatus("已是最新");
+                } else {
+                  setUpdateVersion(result.version);
+                  setUpdateDownloaded(false);
+                  setUpdateStatus(`发现 ${result.version}`);
+                }
               } catch (reason) {
                 setUpdateStatus(String(reason));
               }
@@ -440,6 +525,31 @@ function SettingsModal() {
           >
             检查更新
           </button>
+          {updateVersion && !updateDownloaded && (
+            <button
+              type="button"
+              className="rounded border border-stone-300 px-3 py-1.5 text-xs text-stone-600"
+              onClick={async () => {
+                setUpdateStatus("下载中…");
+                try {
+                  await window.yumeFriend?.downloadUpdate?.();
+                } catch (reason) {
+                  setUpdateStatus(String(reason));
+                }
+              }}
+            >
+              下载更新
+            </button>
+          )}
+          {updateDownloaded && (
+            <button
+              type="button"
+              className="rounded bg-stone-800 px-3 py-1.5 text-xs text-white"
+              onClick={() => void window.yumeFriend?.installUpdate?.()}
+            >
+              安装并重启
+            </button>
+          )}
           <button
             type="button"
             className="rounded border border-stone-300 px-3 py-1.5 text-xs text-stone-600"
@@ -449,6 +559,13 @@ function SettingsModal() {
             }}
           >
             查看日志
+          </button>
+          <button
+            type="button"
+            className="rounded border border-stone-300 px-3 py-1.5 text-xs text-stone-600"
+            onClick={() => setLegalOpen(true)}
+          >
+            法律说明
           </button>
           {updateStatus && <span className="text-xs text-stone-500">{updateStatus}</span>}
         </div>
@@ -569,6 +686,7 @@ function SettingsModal() {
         </div>
       </form>
       <Live2DSettingsModal open={live2dOpen} onClose={() => setLive2dOpen(false)} />
+      <LegalModal open={legalOpen} onClose={() => setLegalOpen(false)} />
     </div>
   );
 }
@@ -1170,6 +1288,7 @@ export default function App() {
     selectFriend,
     refreshMessages,
     theme,
+    settings,
   } = useApp();
 
   useEffect(() => {
@@ -1187,6 +1306,10 @@ export default function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = `${theme.color}-${theme.mode}`;
   }, [theme]);
+
+  useEffect(() => {
+    void window.yumeFriend?.setZoomFactor?.(settings.ui_scale);
+  }, [settings.ui_scale]);
 
   return (
     <div className="app-shell">

@@ -6,7 +6,7 @@ import os
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -15,10 +15,11 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from loguru import logger
+from openai import AsyncOpenAI
 from pydantic import BaseModel
 
 from yumefriend import __version__
-from yumefriend.assets import asset_data_url
+from yumefriend.assets import asset_data_url, cleanup_audio_assets
 from yumefriend.assets import router as assets_router
 from yumefriend.chat import (
     StreamRegistry,
@@ -59,6 +60,12 @@ class SettingWrite(BaseModel):
     value_json: str
 
 
+class ModelTest(BaseModel):
+    base_url: str
+    api_key: str
+    model: str
+
+
 class FriendPatch(BaseModel):
     name: str | None = None
     personality: str | None = None
@@ -85,9 +92,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("yumeFriend backend started")
     reminder = asyncio.create_task(reminder_loop(core))
     life = asyncio.create_task(life_loop(core))
+    cleanup = asyncio.create_task(cleanup_voice_loop(core))
     yield
     reminder.cancel()
     life.cancel()
+    cleanup.cancel()
     await core.close()
 
 
@@ -281,6 +290,68 @@ async def life_loop(core: CoreClient) -> None:
         except Exception:  # noqa: BLE001
             logger.exception("生活线循环失败")
             await asyncio.sleep(30)
+
+
+async def cleanup_voice_loop(core: CoreClient) -> None:
+    while True:
+        try:
+            await cleanup_voice_once(core)
+        except Exception:  # noqa: BLE001
+            logger.exception("语音清理失败")
+        await asyncio.sleep(24 * 60 * 60)
+
+
+async def cleanup_voice_once(core: CoreClient) -> None:
+    settings = await core.read("settings", "settings", limit=200)
+    values: dict[str, Any] = {}
+    for item in settings.get("items", []):
+        try:
+            values[item["key"]] = json.loads(item["value_json"])
+        except (json.JSONDecodeError, KeyError):
+            pass
+    days = int(values.get("voice_retention_days", 30))
+    if days <= 0:
+        return
+    asset_ids = cleanup_audio_assets(datetime.now(UTC) - timedelta(days=days))
+    message_ids: set[str] = set()
+    for asset_id in asset_ids:
+        relations = await core.read(
+            "chat",
+            "message_assets",
+            filter={"asset_id": asset_id},
+            limit=1000,
+        )
+        for item in relations.get("items", []):
+            await core.write(
+                "chat",
+                "message_assets",
+                "delete",
+                {
+                    "message_id": item["message_id"],
+                    "role": item["role"],
+                    "position": item["position"],
+                },
+            )
+            message_ids.add(item["message_id"])
+    for message_id in message_ids:
+        remaining = await core.read(
+            "chat",
+            "message_assets",
+            filter={"message_id": message_id},
+            limit=50,
+        )
+        if any(item.get("role") == "voice" for item in remaining.get("items", [])):
+            continue
+        await core.write(
+            "chat",
+            "messages",
+            "update",
+            {
+                "id": message_id,
+                "voice_status": "missing",
+                "voice_error": "语音已清理",
+            },
+        )
 
 
 @app.get("/api/v1/health")
@@ -714,6 +785,20 @@ async def message_moods(request: Request, message_id: str) -> dict[str, Any]:
 async def settings(request: Request) -> dict[str, Any]:
     result = await get_core(request).read("settings", "settings", limit=200)
     return result
+
+
+@app.post("/api/v1/settings/test")
+async def test_model(draft: ModelTest) -> dict[str, str]:
+    client = AsyncOpenAI(base_url=draft.base_url or None, api_key=draft.api_key)
+    try:
+        response = await client.chat.completions.create(
+            model=draft.model,
+            messages=[{"role": "user", "content": "请只回复：连通正常"}],
+            temperature=0,
+        )
+    finally:
+        await client.close()
+    return {"reply": (response.choices[0].message.content or "").strip()}
 
 
 @app.put("/api/v1/settings")

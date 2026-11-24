@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import time
 from typing import Any
 
 import httpx
@@ -206,14 +207,7 @@ async def synthesize(request: Request, message_id: str) -> dict[str, Any]:
         filter={"message_id": message_id},
         limit=50,
     )
-    start_position = max(
-        [
-            int(item.get("position", 0))
-            for item in existing.get("items", [])
-            if item.get("role") == "voice"
-        ],
-        default=-1,
-    ) + 1
+    start_position = time.time_ns()
     for item in existing.get("items", []):
         if item.get("role") == "voice":
             await client.write(

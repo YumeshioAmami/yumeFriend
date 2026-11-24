@@ -17,6 +17,7 @@ const children: ChildProcess[] = [];
 let mainWindow: BrowserWindow | null = null;
 let petWindow: BrowserWindow | null = null;
 let petFriendId = "";
+let zoomFactor = 1;
 
 function startServices(): void {
   const userData = path.join(repoRoot, "user_data");
@@ -98,6 +99,7 @@ function createWindow(): void {
     },
   });
   mainWindow = window;
+  window.webContents.setZoomFactor(zoomFactor);
   window.setMenuBarVisibility(false);
   window.on("closed", () => {
     mainWindow = null;
@@ -144,6 +146,7 @@ function createPetWindow(friendId?: string): void {
       preload: path.join(currentDir, "preload.cjs"),
     },
   });
+  petWindow.webContents.setZoomFactor(zoomFactor);
   petWindow.on("closed", () => {
     petWindow = null;
     petFriendId = "";
@@ -169,6 +172,11 @@ ipcMain.handle("pet:open-main", () => {
   mainWindow.show();
   mainWindow.focus();
 });
+ipcMain.handle("window:set-zoom", (_event, scale: number) => {
+  zoomFactor = scale;
+  mainWindow?.webContents.setZoomFactor(scale);
+  petWindow?.webContents.setZoomFactor(scale);
+});
 ipcMain.handle("update:check", async (_event, url: string) => {
   if (!url) throw new Error("未配置更新地址");
   autoUpdater.autoDownload = false;
@@ -181,6 +189,25 @@ ipcMain.handle("update:download", async () => {
 });
 ipcMain.handle("update:install", () => {
   autoUpdater.quitAndInstall();
+});
+
+autoUpdater.on("download-progress", (progress) => {
+  mainWindow?.webContents.send("update:status", {
+    state: "downloading",
+    percent: progress.percent,
+  });
+});
+autoUpdater.on("update-downloaded", (info) => {
+  mainWindow?.webContents.send("update:status", {
+    state: "downloaded",
+    version: info.version,
+  });
+});
+autoUpdater.on("error", (error) => {
+  mainWindow?.webContents.send("update:status", {
+    state: "error",
+    message: String(error),
+  });
 });
 
 void app.whenReady().then(async () => {

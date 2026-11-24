@@ -213,6 +213,17 @@ export async function saveSetting(key: string, value: unknown): Promise<void> {
   });
 }
 
+export function testModel(data: {
+  base_url: string;
+  api_key: string;
+  model: string;
+}): Promise<{ reply: string }> {
+  return request("/settings/test", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
 export function listMemories(friendId: string): Promise<ListResult<Memory>> {
   return request(`/friends/${friendId}/memories`);
 }

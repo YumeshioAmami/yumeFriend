@@ -4,6 +4,7 @@ import base64
 import hashlib
 import json
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
@@ -51,6 +52,7 @@ def save_asset(data: bytes, mime: str, kind: str) -> dict:
         "size": len(data),
         "path": file_path.name,
         "description": "",
+        "created_at": datetime.now(UTC).isoformat(),
     }
     index[asset_id] = item
     save_index(index)
@@ -72,6 +74,32 @@ def asset_data_url(asset_id: str) -> str:
     item, path = get_asset(asset_id)
     data = base64.b64encode(path.read_bytes()).decode("ascii")
     return f"data:{item.get('mime', 'application/octet-stream')};base64,{data}"
+
+
+def cleanup_audio_assets(before: datetime) -> list[str]:
+    index = load_index()
+    removed: list[str] = []
+    for asset_id, item in list(index.items()):
+        if item.get("kind") != "audio":
+            continue
+        path = ASSET_ROOT / item.get("path", "")
+        try:
+            created_at = datetime.fromisoformat(str(item["created_at"]))
+        except (KeyError, ValueError, TypeError):
+            try:
+                created_at = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
+            except FileNotFoundError:
+                created_at = datetime.min.replace(tzinfo=UTC)
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=UTC)
+        if created_at >= before:
+            continue
+        path.unlink(missing_ok=True)
+        removed.append(asset_id)
+        del index[asset_id]
+    if removed:
+        save_index(index)
+    return removed
 
 
 @router.get("/assets/{asset_id}")
