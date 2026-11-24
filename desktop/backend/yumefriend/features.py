@@ -106,6 +106,8 @@ async def memory_event(
     action: str,
     before: dict[str, Any] | None = None,
     after: dict[str, Any] | None = None,
+    *,
+    actor: str = "user",
 ) -> None:
     await client.write(
         "memory",
@@ -114,7 +116,7 @@ async def memory_event(
         {
             "friend_id": friend_id,
             "memory_id": memory_id,
-            "actor": "user",
+            "actor": actor,
             "action": action,
             "before_json": json.dumps(before, ensure_ascii=False) if before else None,
             "after_json": json.dumps(after, ensure_ascii=False) if after else None,

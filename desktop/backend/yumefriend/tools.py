@@ -381,6 +381,28 @@ def capture_screen_asset() -> dict[str, Any]:
     return save_asset(buffer.getvalue(), "image/png", "image")
 
 
+async def image_asset_belongs(core: CoreClient, friend_id: str, asset_id: str) -> bool:
+    messages = await core.read(
+        "chat",
+        "messages",
+        filter={"friend_id": friend_id},
+        limit=500,
+    )
+    for message in messages.get("items", []):
+        assets = await core.read(
+            "chat",
+            "message_assets",
+            filter={"message_id": message["id"]},
+            limit=20,
+        )
+        if any(
+            item.get("asset_id") == asset_id and item.get("role") == "image"
+            for item in assets.get("items", [])
+        ):
+            return True
+    return False
+
+
 async def execute_tool(
     core: CoreClient,
     name: str,
@@ -484,7 +506,7 @@ async def execute_tool(
             },
         )
         record = result["record"]
-        await memory_event(core, friend_id, record["id"], "create", after=record)
+        await memory_event(core, friend_id, record["id"], "create", after=record, actor="agent")
         return record, []
     if name == "recall_memory":
         query = str(arguments.get("query") or "").casefold()
@@ -526,9 +548,11 @@ async def execute_tool(
         if not before_result.get("items"):
             raise ValueError("memory not found")
         before = before_result["items"][0]
+        if before.get("friend_id") != friend_id:
+            raise ValueError("memory not found")
         if name == "delete_memory":
             await core.write("memory", "memories", "delete", {"id": memory_id})
-            await memory_event(core, friend_id, memory_id, "delete", before)
+            await memory_event(core, friend_id, memory_id, "delete", before, actor="agent")
             return {"id": memory_id, "deleted": True}, []
         patch = {
             key: arguments[key]
@@ -542,7 +566,7 @@ async def execute_tool(
             {"id": memory_id, **patch},
         )
         record = result["record"]
-        await memory_event(core, friend_id, memory_id, "update", before, record)
+        await memory_event(core, friend_id, memory_id, "update", before, record, actor="agent")
         return record, []
     if name == "add_schedule":
         result = await core.write(
@@ -562,7 +586,7 @@ async def execute_tool(
             },
         )
         record = result["record"]
-        await schedule_event(core, friend_id, record["id"], "create", after=record)
+        await schedule_event(core, friend_id, record["id"], "create", after=record, actor="agent")
         return record, []
     if name == "list_schedules":
         result = await core.read(
@@ -587,6 +611,8 @@ async def execute_tool(
         if not before_result.get("items"):
             raise ValueError("schedule not found")
         before = before_result["items"][0]
+        if before.get("friend_id") != friend_id:
+            raise ValueError("schedule not found")
         patch = {
             key: arguments[key]
             for key in (
@@ -605,7 +631,7 @@ async def execute_tool(
             {"id": schedule_id, **patch},
         )
         record = result["record"]
-        await schedule_event(core, friend_id, schedule_id, "update", before, record)
+        await schedule_event(core, friend_id, schedule_id, "update", before, record, actor="agent")
         return record, []
     if name == "remove_schedule":
         schedule_id = str(arguments.get("schedule_id") or "")
@@ -618,8 +644,10 @@ async def execute_tool(
         if not before_result.get("items"):
             raise ValueError("schedule not found")
         before = before_result["items"][0]
+        if before.get("friend_id") != friend_id:
+            raise ValueError("schedule not found")
         await core.write("schedule", "schedules", "delete", {"id": schedule_id})
-        await schedule_event(core, friend_id, schedule_id, "delete", before)
+        await schedule_event(core, friend_id, schedule_id, "delete", before, actor="agent")
         return {"id": schedule_id, "deleted": True}, []
     if name == "save_thought":
         result = await core.write(
@@ -651,6 +679,14 @@ async def execute_tool(
         return {"items": items}, []
     if name == "finish_thought":
         thought_id = str(arguments.get("thought_id") or "")
+        before_result = await core.read(
+            "thought",
+            "thoughts",
+            filter={"id": thought_id},
+            limit=1,
+        )
+        if not before_result.get("items") or before_result["items"][0].get("friend_id") != friend_id:
+            raise ValueError("thought not found")
         result = await core.write(
             "thought",
             "thoughts",
@@ -663,6 +699,8 @@ async def execute_tool(
         return {"asset_id": asset["id"]}, []
     if name == "look_image":
         asset_id = str(arguments.get("asset_id") or "")
+        if asset_id and not await image_asset_belongs(core, friend_id, asset_id):
+            raise ValueError("image not found")
         if not asset_id:
             messages = await core.read(
                 "chat",
