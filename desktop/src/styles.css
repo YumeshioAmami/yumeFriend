@@ -577,13 +577,19 @@ html[data-pet="1"] #root {
 
 .pet-preview {
   position: absolute;
-  inset: 158px 8px 8px;
+  inset: 8px;
   display: flex;
   min-height: 0;
   align-items: flex-end;
   justify-content: center;
+  pointer-events: none;
   -webkit-app-region: drag;
   animation: pet-float 4s ease-in-out infinite;
+}
+
+.pet-preview > * {
+  pointer-events: auto;
+  -webkit-app-region: drag;
 }
 
 .pet-rail {
@@ -594,9 +600,13 @@ html[data-pet="1"] #root {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 4px;
+  gap: 1px;
+  border: 1px solid rgba(120, 100, 80, 0.22);
+  border-radius: 10px;
+  background: rgba(255, 253, 248, 0.9);
+  padding: 4px;
   opacity: 0;
-  pointer-events: none;
+  pointer-events: auto;
   transition: opacity 120ms ease;
   -webkit-app-region: no-drag;
 }
@@ -607,13 +617,19 @@ html[data-pet="1"] #root {
 }
 
 .pet-rail button {
-  border: 1px solid rgba(120, 100, 80, 0.22);
-  border-radius: 9999px;
-  background: rgba(255, 253, 248, 0.88);
-  padding: 3px 9px;
+  width: 100%;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  padding: 4px 8px;
   color: #a34f40;
   font-size: 11px;
+  text-align: left;
   white-space: nowrap;
+}
+
+.pet-rail button:hover {
+  background: rgba(163, 79, 64, 0.1);
 }
 
 .pet-rail button.active {
@@ -628,6 +644,10 @@ html[data-pet="1"] #root {
 .pet-locked .pet-preview {
   -webkit-app-region: no-drag;
   animation: none;
+}
+
+.pet-locked .pet-preview > * {
+  -webkit-app-region: no-drag;
 }
 
 .pet-preview img {
@@ -678,7 +698,7 @@ html[data-pet="1"] #root {
   position: absolute;
   left: 64px;
   right: 8px;
-  top: 15%;
+  top: 8px;
   z-index: 2;
   display: flex;
   flex-direction: column;

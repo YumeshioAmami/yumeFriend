@@ -19,7 +19,7 @@ import {
 import { Live2DCharacter } from "./Live2DCharacter";
 
 const MIN_SCALE = 0.6;
-const MAX_SCALE = 1.8;
+const MAX_SCALE = 5.4;
 
 export default function PetWindow() {
   const [friends, setFriends] = useState<Friend[]>([]);
@@ -41,6 +41,7 @@ export default function PetWindow() {
   const playedRef = useRef("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const ignoreRef = useRef(true);
 
   const showPack = (pack?: VisualPack) => {
     setPreview("");
@@ -109,6 +110,20 @@ export default function PetWindow() {
   useEffect(() => {
     if (chatOpen) inputRef.current?.focus();
   }, [chatOpen]);
+
+  useEffect(() => {
+    const onMove = (event: MouseEvent) => {
+      const target = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null;
+      const hit = Boolean(target?.closest(".pet-hit"));
+      setHovered(hit);
+      if (ignoreRef.current !== !hit) {
+        ignoreRef.current = !hit;
+        void window.yumeFriend?.setPetIgnoreMouse?.(!hit);
+      }
+    };
+    window.addEventListener("mousemove", onMove);
+    return () => window.removeEventListener("mousemove", onMove);
+  }, []);
 
   useEffect(() => {
     if (!latest || latest.status !== "completed" || latest.mood) return;
@@ -226,12 +241,11 @@ export default function PetWindow() {
   };
 
   return (
-    <div
-      className={`pet-shell ${locked ? "pet-locked" : ""}`}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      <div className="pet-preview" title={locked ? "桌宠已锁定" : "拖动移动窗口"}>
+    <div className={`pet-shell ${locked ? "pet-locked" : ""}`}>
+      <div
+        className={`pet-preview ${locked ? "" : "pet-hit"}`}
+        title={locked ? "桌宠已锁定" : "拖动移动窗口"}
+      >
         {friend?.visual_mode === "live2d" && modelUrl ? (
           <Live2DCharacter
             modelUrl={modelUrl}
@@ -247,7 +261,7 @@ export default function PetWindow() {
         )}
       </div>
 
-      <div className={`pet-rail ${hovered ? "visible" : ""}`}>
+      <div className={`pet-rail pet-hit ${hovered ? "visible" : ""}`}>
         {!locked ? (
           <>
             <button onClick={() => window.yumeFriend?.openMain?.()}>主界面</button>
@@ -281,7 +295,7 @@ export default function PetWindow() {
       </div>
 
       {!locked && chatOpen && (
-        <div className="pet-chat-panel">
+        <div className="pet-chat-panel pet-hit">
           <button className="pet-chat-close" onClick={() => setChatOpen(false)}>
             ×
           </button>
@@ -319,7 +333,7 @@ export default function PetWindow() {
       )}
 
       {locked && lockedText && (
-        <div className="pet-chat-panel pet-readonly">
+        <div className="pet-chat-panel pet-readonly pet-hit">
           <div className="pet-bubble">
             <div className="pet-name">{friend?.name}</div>
             {lockedText}

@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld("yumeFriend", {
   closePet: () => ipcRenderer.invoke("pet:close"),
   openMain: () => ipcRenderer.invoke("pet:open-main"),
   getPetScale: () => ipcRenderer.invoke("pet:get-scale"),
+  setPetIgnoreMouse: (ignore) => ipcRenderer.invoke("pet:set-ignore-mouse", ignore),
   setPetScale: (scale) => ipcRenderer.invoke("pet:set-scale", scale),
   isPetOpen: () => ipcRenderer.invoke("pet:is-open"),
   isMainFocused: () => ipcRenderer.invoke("pet:main-focused"),

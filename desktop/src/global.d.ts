@@ -8,6 +8,7 @@ declare global {
       closePet?: () => void;
       openMain?: () => void;
       getPetScale?: () => Promise<number>;
+      setPetIgnoreMouse?: (ignore: boolean) => Promise<boolean>;
       setPetScale?: (scale: number) => Promise<number>;
       isPetOpen?: () => Promise<boolean>;
       isMainFocused?: () => Promise<boolean>;

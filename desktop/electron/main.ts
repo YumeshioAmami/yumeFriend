@@ -28,7 +28,7 @@ const PET_BASE_HEIGHT = 660;
 const PET_PREVIOUS_BASE_HEIGHT = 520;
 const PET_LAYOUT_VERSION = 2;
 const PET_MIN_SCALE = 0.6;
-const PET_MAX_SCALE = 1.8;
+const PET_MAX_SCALE = 5.4;
 
 function clampPetScale(value: number): number {
   return Math.min(PET_MAX_SCALE, Math.max(PET_MIN_SCALE, value));
@@ -205,6 +205,7 @@ function createPetWindow(friendId?: string): void {
     },
   });
   petWindow.webContents.setZoomFactor(zoomFactor);
+  petWindow.setIgnoreMouseEvents(true, { forward: true });
   petWindow.on("moved", schedulePetStateSave);
   petWindow.on("resized", schedulePetStateSave);
   schedulePetStateSave();
@@ -234,6 +235,10 @@ ipcMain.handle("pet:open-main", () => {
   mainWindow.focus();
 });
 ipcMain.handle("pet:get-scale", () => petScale);
+ipcMain.handle("pet:set-ignore-mouse", (_event, ignore: boolean) => {
+  petWindow?.setIgnoreMouseEvents(ignore, { forward: true });
+  return ignore;
+});
 ipcMain.handle("pet:set-scale", (_event, value: number) => {
   petScale = clampPetScale(value);
   if (petWindow) {
