@@ -586,17 +586,35 @@ html[data-pet="1"] #root {
   animation: pet-float 4s ease-in-out infinite;
 }
 
-.pet-top-ui {
+.pet-rail {
   position: absolute;
   left: 8px;
-  right: 8px;
-  top: 15%;
-  z-index: 2;
+  top: 34%;
+  z-index: 3;
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  pointer-events: none;
+  align-items: flex-start;
+  gap: 4px;
   -webkit-app-region: no-drag;
+}
+
+.pet-rail button {
+  border: 1px solid rgba(120, 100, 80, 0.22);
+  border-radius: 9999px;
+  background: rgba(255, 253, 248, 0.88);
+  padding: 3px 9px;
+  color: #a34f40;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.pet-rail button.active {
+  background: #a34f40;
+  color: #fff;
+}
+
+.pet-rail button:disabled {
+  opacity: 0.4;
 }
 
 .pet-locked .pet-preview {
@@ -626,16 +644,12 @@ html[data-pet="1"] #root {
 }
 
 .pet-bubble {
-  max-height: 72px;
+  max-height: 92px;
   overflow-y: auto;
-  border: 1px solid rgba(120, 100, 80, 0.2);
-  border-radius: 10px;
-  background: rgba(255, 253, 248, 0.92);
-  padding: 8px 10px;
+  padding: 0;
   color: #3a332c;
   font-size: 12px;
   line-height: 1.6;
-  backdrop-filter: blur(8px);
   pointer-events: auto;
   cursor: pointer;
   -webkit-app-region: no-drag;
@@ -647,21 +661,29 @@ html[data-pet="1"] #root {
   font-size: 10px;
 }
 
-.pet-controls {
+.pet-chat-panel {
+  position: absolute;
+  left: 64px;
+  right: 8px;
+  top: 15%;
+  z-index: 2;
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  pointer-events: auto;
+  border: 1px solid rgba(120, 100, 80, 0.22);
+  border-radius: 10px;
+  background: rgba(255, 253, 248, 0.94);
+  padding: 8px 10px;
+  backdrop-filter: blur(8px);
+  -webkit-app-region: no-drag;
 }
 
 .pet-input {
   display: flex;
   align-items: center;
   gap: 4px;
-  border: 1px solid rgba(120, 100, 80, 0.2);
-  border-radius: 8px;
-  background: rgba(255, 253, 248, 0.94);
-  padding: 4px 6px;
+  margin-top: 6px;
+  border-top: 1px solid rgba(120, 100, 80, 0.18);
+  padding: 6px 0 0;
 }
 
 .pet-input input {
@@ -674,43 +696,13 @@ html[data-pet="1"] #root {
   outline: none;
 }
 
-.pet-input button,
-.pet-actions button {
+.pet-input button {
   color: #a34f40;
   font-size: 11px;
 }
 
-.pet-input button:disabled,
-.pet-actions button:disabled {
+.pet-input button:disabled {
   opacity: 0.4;
-}
-
-.pet-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 3px;
-  padding: 0 2px 2px;
-}
-
-.pet-actions button {
-  border: 1px solid rgba(120, 100, 80, 0.2);
-  border-radius: 9999px;
-  background: rgba(255, 253, 248, 0.88);
-  padding: 2px 7px;
-}
-
-.pet-unlock {
-  position: absolute;
-  right: 8px;
-  top: 8px;
-  border: 1px solid rgba(120, 100, 80, 0.25);
-  border-radius: 9999px;
-  background: rgba(255, 253, 248, 0.9);
-  padding: 3px 9px;
-  color: #a34f40;
-  font-size: 11px;
-  -webkit-app-region: no-drag;
 }
 
 @keyframes pet-float {

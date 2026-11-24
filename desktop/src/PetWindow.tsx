@@ -32,13 +32,14 @@ export default function PetWindow() {
   const [bubbleIndex, setBubbleIndex] = useState(0);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
-  const [hovered, setHovered] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   const [locked, setLocked] = useState(false);
   const [muted, setMuted] = useState(false);
   const [scale, setScale] = useState(1);
   const classifiedRef = useRef("");
   const playedRef = useRef("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   const showPack = (pack?: VisualPack) => {
     setPreview("");
@@ -103,6 +104,10 @@ export default function PetWindow() {
   useEffect(() => {
     setBubbleIndex(0);
   }, [latest?.id]);
+
+  useEffect(() => {
+    if (chatOpen) inputRef.current?.focus();
+  }, [chatOpen]);
 
   useEffect(() => {
     if (!latest || latest.status !== "completed" || latest.mood) return;
@@ -218,14 +223,8 @@ export default function PetWindow() {
       .finally(() => setSending(false));
   };
 
-  const controlsVisible = hovered || Boolean(draft) || sending;
-
   return (
-    <div
-      className={`pet-shell ${locked ? "pet-locked" : ""}`}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
+    <div className={`pet-shell ${locked ? "pet-locked" : ""}`}>
       <div className="pet-preview" title={locked ? "桌宠已锁定" : "拖动移动窗口"}>
         {friend?.visual_mode === "live2d" && modelUrl ? (
           <Live2DCharacter
@@ -242,8 +241,41 @@ export default function PetWindow() {
         )}
       </div>
 
-      {!locked && (
-        <div className="pet-top-ui">
+      <div className="pet-rail">
+        {!locked ? (
+          <>
+            <button onClick={() => window.yumeFriend?.openMain?.()}>主界面</button>
+            <button onClick={switchFriend} disabled={friends.length < 2}>
+              换朋友
+            </button>
+            <button
+              className={chatOpen ? "active" : ""}
+              onClick={() => setChatOpen((value) => !value)}
+            >
+              {chatOpen ? "收起" : "说话"}
+            </button>
+            <button
+              onClick={() => {
+                setLocked(true);
+                setChatOpen(false);
+              }}
+            >
+              锁定
+            </button>
+            <button onClick={() => setMuted((value) => !value)}>
+              {muted ? "声音" : "静音"}
+            </button>
+            <button onClick={() => adjustScale(scale - 0.1)}>－</button>
+            <button onClick={() => adjustScale(scale + 0.1)}>＋</button>
+            <button onClick={() => window.yumeFriend?.closePet?.()}>关闭</button>
+          </>
+        ) : (
+          <button onClick={() => setLocked(false)}>解锁</button>
+        )}
+      </div>
+
+      {!locked && chatOpen && (
+        <div className="pet-chat-panel">
           {currentBubble?.text && (
             <div
               className="pet-bubble"
@@ -257,56 +289,24 @@ export default function PetWindow() {
               {currentBubble.text}
             </div>
           )}
-          <div className="pet-controls">
-            <div className="pet-input">
-              <input
-                value={draft}
-                placeholder="说点什么…"
-                onChange={(event) => setDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    submit();
-                  }
-                }}
-              />
-              <button disabled={sending || !draft.trim()} onClick={submit}>
-                发送
-              </button>
-            </div>
-            {controlsVisible && (
-              <div className="pet-actions">
-                <button onClick={() => window.yumeFriend?.openMain?.()}>主界面</button>
-                <button onClick={switchFriend} disabled={friends.length < 2}>
-                  换朋友
-                </button>
-                <button onClick={() => setLocked(true)}>锁定</button>
-                <button onClick={() => setMuted((value) => !value)}>
-                  {muted ? "声音" : "静音"}
-                </button>
-                <button
-                  onClick={() =>
-                    setBubbleIndex((index) =>
-                      bubbles.length ? (index + 1) % bubbles.length : 0,
-                    )
-                  }
-                  disabled={bubbles.length < 2}
-                >
-                  下一句
-                </button>
-                <button onClick={() => adjustScale(scale - 0.1)}>－</button>
-                <button onClick={() => adjustScale(scale + 0.1)}>＋</button>
-                <button onClick={() => window.yumeFriend?.closePet?.()}>关闭</button>
-              </div>
-            )}
+          <div className="pet-input">
+            <input
+              ref={inputRef}
+              value={draft}
+              placeholder="说点什么…"
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  submit();
+                }
+              }}
+            />
+            <button disabled={sending || !draft.trim()} onClick={submit}>
+              发送
+            </button>
           </div>
         </div>
-      )}
-
-      {locked && (
-        <button className="pet-unlock" onClick={() => setLocked(false)}>
-          解锁
-        </button>
       )}
     </div>
   );
