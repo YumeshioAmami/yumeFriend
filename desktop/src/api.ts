@@ -14,6 +14,7 @@ export type Friend = {
   created_at: string;
   visual_mode?: string;
   visual_pack_id?: string | null;
+  portrait_transform_json?: string | null;
   life_enabled?: number;
 };
 

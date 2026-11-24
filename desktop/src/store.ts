@@ -418,16 +418,21 @@ function listenReply(replyMessage: Message) {
       friend?.voice_reply_enabled === 1 &&
       friend.voice_id
     ) {
-      void synthesizeVoice(data.message.id)
-        .then(async (result) => {
-          useApp.setState((current) => ({
-            messages: current.messages.map((message) =>
-              message.id === result.message.id ? result.message : message,
-            ),
-          }));
-          await state.playVoice(result.message.voice_asset_ids ?? []);
-        })
-        .catch(() => undefined);
+      void (async () => {
+        if (
+          (await window.yumeFriend?.isPetOpen?.()) &&
+          !(await window.yumeFriend?.isMainFocused?.())
+        ) {
+          return;
+        }
+        const result = await synthesizeVoice(data.message.id);
+        useApp.setState((current) => ({
+          messages: current.messages.map((message) =>
+            message.id === result.message.id ? result.message : message,
+          ),
+        }));
+        await state.playVoice(result.message.voice_asset_ids ?? []);
+      })().catch(() => undefined);
     }
   });
 

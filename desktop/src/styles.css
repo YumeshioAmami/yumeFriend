@@ -559,28 +559,44 @@ body {
   }
 }
 
+html[data-pet="1"],
+html[data-pet="1"] body,
+html[data-pet="1"] #root {
+  height: 100%;
+  overflow: hidden;
+  background: transparent !important;
+}
+
 .pet-shell {
+  position: relative;
   display: flex;
   height: 100vh;
   flex-direction: column;
   justify-content: flex-end;
   gap: 6px;
-  padding: 10px;
+  padding: 8px;
   background: transparent;
-  -webkit-app-region: drag;
-}
-
-.pet-no-drag,
-.pet-no-drag * {
-  -webkit-app-region: no-drag;
+  user-select: none;
 }
 
 .pet-preview {
   display: flex;
-  height: 220px;
+  min-height: 0;
+  flex: 1;
   align-items: flex-end;
   justify-content: center;
+  cursor: grab;
+  touch-action: none;
   animation: pet-float 4s ease-in-out infinite;
+}
+
+.pet-preview:active {
+  cursor: grabbing;
+}
+
+.pet-locked .pet-preview {
+  cursor: default;
+  animation: none;
 }
 
 .pet-preview img {
@@ -605,7 +621,7 @@ body {
 }
 
 .pet-bubble {
-  max-height: 96px;
+  max-height: 112px;
   overflow-y: auto;
   border: 1px solid rgba(120, 100, 80, 0.2);
   border-radius: 10px;
@@ -615,6 +631,7 @@ body {
   font-size: 12px;
   line-height: 1.6;
   backdrop-filter: blur(8px);
+  pointer-events: none;
 }
 
 .pet-name {
@@ -623,13 +640,19 @@ body {
   font-size: 10px;
 }
 
+.pet-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
 .pet-input {
   display: flex;
   align-items: center;
   gap: 4px;
   border: 1px solid rgba(120, 100, 80, 0.2);
   border-radius: 8px;
-  background: rgba(255, 253, 248, 0.92);
+  background: rgba(255, 253, 248, 0.94);
   padding: 4px 6px;
 }
 
@@ -649,14 +672,36 @@ body {
   font-size: 11px;
 }
 
-.pet-input button:disabled {
+.pet-input button:disabled,
+.pet-actions button:disabled {
   opacity: 0.4;
 }
 
 .pet-actions {
   display: flex;
-  justify-content: space-between;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 3px;
   padding: 0 2px 2px;
+}
+
+.pet-actions button {
+  border: 1px solid rgba(120, 100, 80, 0.2);
+  border-radius: 9999px;
+  background: rgba(255, 253, 248, 0.88);
+  padding: 2px 7px;
+}
+
+.pet-unlock {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  border: 1px solid rgba(120, 100, 80, 0.25);
+  border-radius: 9999px;
+  background: rgba(255, 253, 248, 0.9);
+  padding: 3px 9px;
+  color: #a34f40;
+  font-size: 11px;
 }
 
 @keyframes pet-float {

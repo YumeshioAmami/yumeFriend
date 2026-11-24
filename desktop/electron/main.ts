@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, screen } from "electron";
 import updater from "electron-updater";
 import { fileURLToPath } from "node:url";
 
@@ -18,9 +18,58 @@ let mainWindow: BrowserWindow | null = null;
 let petWindow: BrowserWindow | null = null;
 let petFriendId = "";
 let zoomFactor = 1;
+let petScale = 1;
+let petDrag: {
+  cursorX: number;
+  cursorY: number;
+  windowX: number;
+  windowY: number;
+} | null = null;
+let petSaveTimer: NodeJS.Timeout | null = null;
+
+const userDataDir = path.join(repoRoot, "user_data");
+const petStateFile = path.join(userDataDir, "pet_window.json");
+const PET_BASE_WIDTH = 320;
+const PET_BASE_HEIGHT = 520;
+const PET_MIN_SCALE = 0.6;
+const PET_MAX_SCALE = 1.8;
+
+function clampPetScale(value: number): number {
+  return Math.min(PET_MAX_SCALE, Math.max(PET_MIN_SCALE, value));
+}
+
+function petSize(): { width: number; height: number } {
+  return {
+    width: Math.round(PET_BASE_WIDTH * petScale),
+    height: Math.round(PET_BASE_HEIGHT * petScale),
+  };
+}
+
+function readPetState(): { x?: number; y?: number; scale?: number } {
+  try {
+    return JSON.parse(fs.readFileSync(petStateFile, "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+function savePetState(): void {
+  if (!petWindow) return;
+  const bounds = petWindow.getBounds();
+  fs.mkdirSync(userDataDir, { recursive: true });
+  fs.writeFileSync(
+    petStateFile,
+    JSON.stringify({ x: bounds.x, y: bounds.y, scale: petScale }),
+  );
+}
+
+function schedulePetStateSave(): void {
+  if (petSaveTimer) clearTimeout(petSaveTimer);
+  petSaveTimer = setTimeout(savePetState, 300);
+}
 
 function startServices(): void {
-  const userData = path.join(repoRoot, "user_data");
+  const userData = userDataDir;
   fs.mkdirSync(userData, { recursive: true });
 
   const deviceFile = path.join(userData, "device_id");
@@ -133,9 +182,14 @@ function createPetWindow(friendId?: string): void {
     return;
   }
   petFriendId = friendId ?? "";
+  const state = readPetState();
+  petScale = clampPetScale(Number(state.scale) || 1);
+  const size = petSize();
   petWindow = new BrowserWindow({
-    width: 320,
-    height: 440,
+    width: size.width,
+    height: size.height,
+    x: typeof state.x === "number" ? state.x : undefined,
+    y: typeof state.y === "number" ? state.y : undefined,
     transparent: true,
     frame: false,
     resizable: false,
@@ -147,6 +201,8 @@ function createPetWindow(friendId?: string): void {
     },
   });
   petWindow.webContents.setZoomFactor(zoomFactor);
+  petWindow.on("moved", schedulePetStateSave);
+  petWindow.on("resized", schedulePetStateSave);
   petWindow.on("closed", () => {
     petWindow = null;
     petFriendId = "";
@@ -172,6 +228,42 @@ ipcMain.handle("pet:open-main", () => {
   mainWindow.show();
   mainWindow.focus();
 });
+ipcMain.handle("pet:get-scale", () => petScale);
+ipcMain.handle("pet:set-scale", (_event, value: number) => {
+  petScale = clampPetScale(value);
+  if (petWindow) {
+    const size = petSize();
+    petWindow.setSize(size.width, size.height);
+    schedulePetStateSave();
+  }
+  return petScale;
+});
+ipcMain.handle("pet:drag-start", () => {
+  if (!petWindow) return false;
+  const cursor = screen.getCursorScreenPoint();
+  const bounds = petWindow.getBounds();
+  petDrag = {
+    cursorX: cursor.x,
+    cursorY: cursor.y,
+    windowX: bounds.x,
+    windowY: bounds.y,
+  };
+  return true;
+});
+ipcMain.handle("pet:drag-move", () => {
+  if (!petWindow || !petDrag) return;
+  const cursor = screen.getCursorScreenPoint();
+  petWindow.setPosition(
+    petDrag.windowX + cursor.x - petDrag.cursorX,
+    petDrag.windowY + cursor.y - petDrag.cursorY,
+  );
+});
+ipcMain.handle("pet:drag-end", () => {
+  petDrag = null;
+  schedulePetStateSave();
+});
+ipcMain.handle("pet:is-open", () => Boolean(petWindow));
+ipcMain.handle("pet:main-focused", () => mainWindow?.isFocused() ?? false);
 ipcMain.handle("window:set-zoom", (_event, scale: number) => {
   zoomFactor = scale;
   mainWindow?.webContents.setZoomFactor(scale);

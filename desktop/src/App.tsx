@@ -1,10 +1,18 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+  type WheelEvent as ReactWheelEvent,
+} from "react";
 import {
   assetUrl,
   downloadLive2DRuntime,
   drawImage,
   getLive2DRuntimeStatus,
   listVisualPacks,
+  patchFriend,
   synthesizeVoice,
   testModel,
   transcribeAudio,
@@ -1059,6 +1067,23 @@ function CallOverlay({ friend, onClose }: { friend: Friend; onClose: () => void 
   );
 }
 
+type ImmersiveTransform = { scale: number; x: number; y: number };
+
+const DEFAULT_IMMERSIVE_TRANSFORM: ImmersiveTransform = { scale: 1, x: 0, y: 0 };
+
+function parseImmersiveTransform(raw?: string | null): ImmersiveTransform {
+  try {
+    const value = JSON.parse(raw || "{}") as Partial<ImmersiveTransform>;
+    return {
+      scale: Number(value.scale) || 1,
+      x: Number(value.x) || 0,
+      y: Number(value.y) || 0,
+    };
+  } catch {
+    return DEFAULT_IMMERSIVE_TRANSFORM;
+  }
+}
+
 function ImmersiveOverlay() {
   const {
     immersive,
@@ -1079,6 +1104,10 @@ function ImmersiveOverlay() {
   const [mode, setMode] = useState<"her" | "me">("her");
   const [index, setIndex] = useState(0);
   const [draft, setDraft] = useState("");
+  const [transform, setTransform] = useState(DEFAULT_IMMERSIVE_TRANSFORM);
+  const [adjusting, setAdjusting] = useState(false);
+  const dragRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
+  const saveTimer = useRef<number | null>(null);
   const classifiedRef = useRef("");
   const playedRef = useRef("");
   const friend = friends.find((item) => item.id === selectedId);
@@ -1097,6 +1126,58 @@ function ImmersiveOverlay() {
   const displayPreview = expressions[currentMood] || preview;
   const canAdvance = safeIndex < units.length - 1;
   const replyKey = lastAssistant?.id ?? "";
+
+  useEffect(() => {
+    setTransform(parseImmersiveTransform(friend?.portrait_transform_json));
+    setAdjusting(false);
+  }, [friend?.id, friend?.portrait_transform_json]);
+
+  const persistTransform = (next: ImmersiveTransform) => {
+    setTransform(next);
+    if (!friend) return;
+    if (saveTimer.current) window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => {
+      void patchFriend(friend.id, {
+        portrait_transform_json: JSON.stringify(next),
+      });
+    }, 600);
+  };
+
+  const startAdjust = (event: ReactPointerEvent) => {
+    if (!adjusting) return;
+    event.stopPropagation();
+    dragRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+      ox: transform.x,
+      oy: transform.y,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const moveAdjust = (event: ReactPointerEvent) => {
+    const drag = dragRef.current;
+    if (!adjusting || !drag) return;
+    event.stopPropagation();
+    persistTransform({
+      ...transform,
+      x: drag.ox + event.clientX - drag.x,
+      y: drag.oy + event.clientY - drag.y,
+    });
+  };
+
+  const endAdjust = (event: ReactPointerEvent) => {
+    if (!dragRef.current) return;
+    event.stopPropagation();
+    dragRef.current = null;
+  };
+
+  const wheelAdjust = (event: ReactWheelEvent) => {
+    if (!adjusting) return;
+    event.stopPropagation();
+    const scale = Math.min(3, Math.max(0.3, transform.scale - event.deltaY / 800));
+    persistTransform({ ...transform, scale: Number(scale.toFixed(3)) });
+  };
 
   useEffect(() => {
     if (!immersive || !friend?.visual_pack_id) {
@@ -1160,16 +1241,61 @@ function ImmersiveOverlay() {
         <span className="text-xs text-white/50">
           {sending ? "正在说…" : mode === "me" ? "轮到你" : "点一下继续"}
         </span>
-        <button
-          className="rounded border border-white/20 px-3 py-1 text-xs text-white/70"
-          onClick={() => setImmersive(false)}
-        >
-          退出沉浸
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            className={`rounded border px-3 py-1 text-xs ${
+              adjusting
+                ? "border-[var(--accent)] bg-[var(--accent)]/20 text-white"
+                : "border-white/20 text-white/70"
+            }`}
+            onClick={() => setAdjusting((value) => !value)}
+          >
+            {adjusting ? "调整中" : "调整立绘"}
+          </button>
+          {adjusting && (
+            <>
+              <button
+                className="rounded border border-white/20 px-2 py-1 text-xs text-white/75"
+                onClick={() =>
+                  persistTransform({
+                    ...transform,
+                    scale: Number(Math.max(0.3, transform.scale - 0.1).toFixed(3)),
+                  })
+                }
+              >
+                －
+              </button>
+              <button
+                className="rounded border border-white/20 px-2 py-1 text-xs text-white/75"
+                onClick={() =>
+                  persistTransform({
+                    ...transform,
+                    scale: Number(Math.min(3, transform.scale + 0.1).toFixed(3)),
+                  })
+                }
+              >
+                ＋
+              </button>
+              <button
+                className="rounded border border-white/20 px-2 py-1 text-xs text-white/75"
+                onClick={() => persistTransform(DEFAULT_IMMERSIVE_TRANSFORM)}
+              >
+                复位
+              </button>
+            </>
+          )}
+          <button
+            className="rounded border border-white/20 px-3 py-1 text-xs text-white/70"
+            onClick={() => setImmersive(false)}
+          >
+            退出沉浸
+          </button>
+        </div>
       </header>
       <div
         className="relative flex min-h-0 flex-1 items-end justify-center"
         onClick={() => {
+          if (adjusting) return;
           if (mode === "her") {
             if (canAdvance) setIndex((current) => current + 1);
             else setMode("me");
@@ -1184,23 +1310,41 @@ function ImmersiveOverlay() {
           />
         )}
         <div className="relative flex h-full w-full items-end justify-center">
-          {friend.visual_mode === "live2d" && modelUrl ? (
-            <Live2DCharacter
-              modelUrl={modelUrl}
-              modelId={modelId}
-              mood={currentMood}
-              speaking={speaking || sending || lastAssistant?.status === "streaming"}
-              className="max-h-[82vh] max-w-[72vw]"
-            />
-          ) : displayPreview ? (
-            <img
-              className="max-h-[82vh] max-w-[72vw] object-contain drop-shadow-[0_20px_60px_rgba(0,0,0,0.55)]"
-              src={displayPreview}
-              alt={friend.name}
-            />
-          ) : (
-            <div className="pb-40 text-[160px] text-white/15">{friend.name.slice(0, 1)}</div>
-          )}
+          <div
+            className={`flex h-full w-full items-end justify-center ${
+              adjusting ? "ring-1 ring-white/35" : ""
+            }`}
+            style={{
+              transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
+              transformOrigin: "bottom center",
+              cursor: adjusting ? "grab" : "default",
+              touchAction: adjusting ? "none" : "auto",
+            }}
+            onPointerDown={startAdjust}
+            onPointerMove={moveAdjust}
+            onPointerUp={endAdjust}
+            onPointerCancel={endAdjust}
+            onWheel={wheelAdjust}
+          >
+            {friend.visual_mode === "live2d" && modelUrl ? (
+              <Live2DCharacter
+                modelUrl={modelUrl}
+                modelId={modelId}
+                mood={currentMood}
+                speaking={speaking || sending || lastAssistant?.status === "streaming"}
+                className="max-h-[82vh] max-w-[72vw]"
+              />
+            ) : displayPreview ? (
+              <img
+                className="max-h-[82vh] max-w-[72vw] object-contain drop-shadow-[0_20px_60px_rgba(0,0,0,0.55)]"
+                src={displayPreview}
+                alt={friend.name}
+                draggable={false}
+              />
+            ) : (
+              <div className="pb-40 text-[160px] text-white/15">{friend.name.slice(0, 1)}</div>
+            )}
+          </div>
         </div>
       </div>
       <div

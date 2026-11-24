@@ -74,6 +74,7 @@ class FriendPatch(BaseModel):
     voice_id: str | None = None
     visual_mode: str | None = None
     visual_pack_id: str | None = None
+    portrait_transform_json: str | None = None
     life_enabled: int | None = None
     presence: int | None = None
     voice_reply_enabled: int | None = None
