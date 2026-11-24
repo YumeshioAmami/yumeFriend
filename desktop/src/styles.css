@@ -595,7 +595,15 @@ html[data-pet="1"] #root {
   flex-direction: column;
   align-items: flex-start;
   gap: 4px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
   -webkit-app-region: no-drag;
+}
+
+.pet-rail.visible {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .pet-rail button {
@@ -646,13 +654,18 @@ html[data-pet="1"] #root {
 .pet-bubble {
   max-height: 92px;
   overflow-y: auto;
-  padding: 0;
+  padding: 0 18px 0 0;
   color: #3a332c;
   font-size: 12px;
   line-height: 1.6;
   pointer-events: auto;
   cursor: pointer;
   -webkit-app-region: no-drag;
+}
+
+.pet-readonly .pet-bubble {
+  cursor: default;
+  padding-right: 0;
 }
 
 .pet-name {
@@ -675,6 +688,15 @@ html[data-pet="1"] #root {
   padding: 8px 10px;
   backdrop-filter: blur(8px);
   -webkit-app-region: no-drag;
+}
+
+.pet-chat-close {
+  position: absolute;
+  right: 6px;
+  top: 2px;
+  color: #a34f40;
+  font-size: 14px;
+  line-height: 1;
 }
 
 .pet-input {

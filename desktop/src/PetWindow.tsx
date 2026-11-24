@@ -33,6 +33,7 @@ export default function PetWindow() {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [hovered, setHovered] = useState(false);
   const [locked, setLocked] = useState(false);
   const [muted, setMuted] = useState(false);
   const [scale, setScale] = useState(1);
@@ -145,6 +146,7 @@ export default function PetWindow() {
 
   const currentBubble =
     bubbles.length > 0 ? bubbles[Math.min(bubbleIndex, bubbles.length - 1)] : null;
+  const lockedText = bubbles.map((item) => item.text).join("\n\n") || latest?.content || "";
   const currentMood = currentBubble?.mood ?? latest?.mood ?? "正常";
   const displayPreview = expressions[currentMood] || preview;
 
@@ -224,7 +226,11 @@ export default function PetWindow() {
   };
 
   return (
-    <div className={`pet-shell ${locked ? "pet-locked" : ""}`}>
+    <div
+      className={`pet-shell ${locked ? "pet-locked" : ""}`}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
       <div className="pet-preview" title={locked ? "桌宠已锁定" : "拖动移动窗口"}>
         {friend?.visual_mode === "live2d" && modelUrl ? (
           <Live2DCharacter
@@ -241,7 +247,7 @@ export default function PetWindow() {
         )}
       </div>
 
-      <div className="pet-rail">
+      <div className={`pet-rail ${hovered ? "visible" : ""}`}>
         {!locked ? (
           <>
             <button onClick={() => window.yumeFriend?.openMain?.()}>主界面</button>
@@ -276,6 +282,9 @@ export default function PetWindow() {
 
       {!locked && chatOpen && (
         <div className="pet-chat-panel">
+          <button className="pet-chat-close" onClick={() => setChatOpen(false)}>
+            ×
+          </button>
           {currentBubble?.text && (
             <div
               className="pet-bubble"
@@ -305,6 +314,15 @@ export default function PetWindow() {
             <button disabled={sending || !draft.trim()} onClick={submit}>
               发送
             </button>
+          </div>
+        </div>
+      )}
+
+      {locked && lockedText && (
+        <div className="pet-chat-panel pet-readonly">
+          <div className="pet-bubble">
+            <div className="pet-name">{friend?.name}</div>
+            {lockedText}
           </div>
         </div>
       )}
