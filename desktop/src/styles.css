@@ -592,6 +592,23 @@ html[data-pet="1"] #root {
   -webkit-app-region: drag;
 }
 
+.pet-visual {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.pet-preview.pet-adjusting {
+  cursor: grab;
+  animation: none;
+}
+
+.pet-preview.pet-adjusting > * {
+  -webkit-app-region: no-drag;
+}
+
 .pet-rail {
   position: absolute;
   left: 8px;

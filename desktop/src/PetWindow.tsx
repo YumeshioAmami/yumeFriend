@@ -3,6 +3,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
   assetUrl,
@@ -34,14 +35,19 @@ export default function PetWindow() {
   const [sending, setSending] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
+  const [adjusting, setAdjusting] = useState(false);
   const [locked, setLocked] = useState(false);
   const [muted, setMuted] = useState(false);
   const [scale, setScale] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
   const classifiedRef = useRef("");
   const playedRef = useRef("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const ignoreRef = useRef(true);
+  const offsetDragRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(
+    null,
+  );
 
   const showPack = (pack?: VisualPack) => {
     setPreview("");
@@ -110,6 +116,17 @@ export default function PetWindow() {
   useEffect(() => {
     if (chatOpen) inputRef.current?.focus();
   }, [chatOpen]);
+
+  useEffect(() => {
+    const raw = localStorage.getItem("yf.pet.offset");
+    if (!raw) return;
+    try {
+      const value = JSON.parse(raw) as { x?: number; y?: number };
+      setOffset({ x: Number(value.x) || 0, y: Number(value.y) || 0 });
+    } catch {
+      setOffset({ x: 0, y: 0 });
+    }
+  }, []);
 
   useEffect(() => {
     const onMove = (event: MouseEvent) => {
@@ -217,6 +234,40 @@ export default function PetWindow() {
     void window.yumeFriend?.setPetScale?.(next);
   };
 
+  const saveOffset = (next: { x: number; y: number }) => {
+    setOffset(next);
+    localStorage.setItem("yf.pet.offset", JSON.stringify(next));
+  };
+
+  const startOffsetDrag = (event: ReactPointerEvent) => {
+    if (!adjusting || locked) return;
+    event.stopPropagation();
+    offsetDragRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+      ox: offset.x,
+      oy: offset.y,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const moveOffsetDrag = (event: ReactPointerEvent) => {
+    const drag = offsetDragRef.current;
+    if (!adjusting || !drag) return;
+    event.stopPropagation();
+    setOffset({
+      x: drag.ox + event.clientX - drag.x,
+      y: drag.oy + event.clientY - drag.y,
+    });
+  };
+
+  const endOffsetDrag = (event: ReactPointerEvent) => {
+    if (!offsetDragRef.current) return;
+    event.stopPropagation();
+    offsetDragRef.current = null;
+    localStorage.setItem("yf.pet.offset", JSON.stringify(offset));
+  };
+
   const switchFriend = () => {
     if (locked || friends.length < 2 || !friend) return;
     const index = friends.findIndex((item) => item.id === friend.id);
@@ -243,22 +294,33 @@ export default function PetWindow() {
   return (
     <div className={`pet-shell ${locked ? "pet-locked" : ""}`}>
       <div
-        className={`pet-preview ${locked ? "" : "pet-hit"}`}
+        className={`pet-preview ${locked ? "" : "pet-hit"} ${
+          adjusting ? "pet-adjusting" : ""
+        }`}
         title={locked ? "桌宠已锁定" : "拖动移动窗口"}
+        onPointerDown={startOffsetDrag}
+        onPointerMove={moveOffsetDrag}
+        onPointerUp={endOffsetDrag}
+        onPointerCancel={endOffsetDrag}
       >
-        {friend?.visual_mode === "live2d" && modelUrl ? (
-          <Live2DCharacter
-            modelUrl={modelUrl}
-            modelId={modelId}
-            mood={currentMood}
-            speaking={sending}
-            className="h-full w-full"
-          />
-        ) : displayPreview ? (
-          <img src={displayPreview} alt={friend?.name ?? ""} draggable={false} />
-        ) : (
-          <div className="pet-face">{friend?.name.slice(0, 1) ?? "?"}</div>
-        )}
+        <div
+          className="pet-visual"
+          style={{ transform: `translate(${offset.x}px, ${offset.y}px)` }}
+        >
+          {friend?.visual_mode === "live2d" && modelUrl ? (
+            <Live2DCharacter
+              modelUrl={modelUrl}
+              modelId={modelId}
+              mood={currentMood}
+              speaking={sending}
+              className="h-full w-full"
+            />
+          ) : displayPreview ? (
+            <img src={displayPreview} alt={friend?.name ?? ""} draggable={false} />
+          ) : (
+            <div className="pet-face">{friend?.name.slice(0, 1) ?? "?"}</div>
+          )}
+        </div>
       </div>
 
       <div className={`pet-rail pet-hit ${hovered ? "visible" : ""}`}>
@@ -287,6 +349,13 @@ export default function PetWindow() {
             </button>
             <button onClick={() => adjustScale(scale - 0.1)}>－</button>
             <button onClick={() => adjustScale(scale + 0.1)}>＋</button>
+            <button
+              className={adjusting ? "active" : ""}
+              onClick={() => setAdjusting((value) => !value)}
+            >
+              {adjusting ? "完成" : "位置"}
+            </button>
+            {adjusting && <button onClick={() => saveOffset({ x: 0, y: 0 })}>复位</button>}
             <button onClick={() => window.yumeFriend?.closePet?.()}>关闭</button>
           </>
         ) : (
