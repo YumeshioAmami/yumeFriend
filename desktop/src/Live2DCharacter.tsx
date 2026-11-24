@@ -4,6 +4,7 @@ import {
   API_BASE,
   getLive2DRuntimeStatus,
   getLive2DSettings,
+  type Live2DExpression,
   type Live2DSettings,
 } from "./api";
 
@@ -52,12 +53,18 @@ export function Live2DCharacter({
   modelUrl,
   modelId,
   mood,
+  settingsOverride,
+  expressionDefs,
+  onCoreReady,
   speaking = false,
   className = "",
 }: {
   modelUrl: string;
   modelId?: string | null;
   mood?: string | null;
+  settingsOverride?: Live2DSettings | null;
+  expressionDefs?: Live2DExpression[] | null;
+  onCoreReady?: (core: any) => void;
   speaking?: boolean;
   className?: string;
 }) {
@@ -66,6 +73,7 @@ export function Live2DCharacter({
   const moodRef = useRef(mood);
   const modelRef = useRef<any>(null);
   const settingsRef = useRef<Live2DSettings | null>(null);
+  const expressionsRef = useRef<Live2DExpression[]>([]);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [errorText, setErrorText] = useState("");
@@ -79,10 +87,22 @@ export function Live2DCharacter({
       settings.labels.find((item) => item.name === moodRef.current) ??
       settings.labels.find((item) => item.name === settings.default_label) ??
       settings.labels[0];
-    for (const [id, value] of Object.entries(settings.base)) {
-      core.setParameterValueById(id, value);
+    const params: Record<string, number> = { ...settings.base };
+    Object.assign(params, label?.params);
+    for (const name of label?.expressions ?? []) {
+      const definition = expressionsRef.current.find((item) => item.name === name);
+      for (const op of definition?.params ?? []) {
+        const blend = op.blend.toLowerCase();
+        if (blend === "multiply") {
+          params[op.id] = (params[op.id] ?? 1) * op.value;
+        } else if (blend === "overwrite") {
+          params[op.id] = op.value;
+        } else {
+          params[op.id] = (params[op.id] ?? 0) + op.value;
+        }
+      }
     }
-    for (const [id, value] of Object.entries(label?.params ?? {})) {
+    for (const [id, value] of Object.entries(params)) {
       core.setParameterValueById(id, value);
     }
     if (speakingRef.current) {
@@ -110,6 +130,18 @@ export function Live2DCharacter({
     moodRef.current = mood;
     applyMood();
   }, [mood]);
+
+  useEffect(() => {
+    if (!settingsOverride) return;
+    settingsRef.current = settingsOverride;
+    applyMood();
+  }, [settingsOverride]);
+
+  useEffect(() => {
+    if (!expressionDefs) return;
+    expressionsRef.current = expressionDefs;
+    applyMood();
+  }, [expressionDefs]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -146,6 +178,7 @@ export function Live2DCharacter({
         modelRef.current = model;
         model.anchor.set(0, 0);
         model.internalModel?.on("afterMotionUpdate", onAfterMotion);
+        onCoreReady?.(model.internalModel?.coreModel);
 
         const fit = () => {
           if (!app || !model || disposed) return;
@@ -167,9 +200,10 @@ export function Live2DCharacter({
         host.dataset.observer = "1";
         (host as any).__observer = observer;
         void model.motion("Idle").catch(() => undefined);
-        if (modelId) {
+        if (modelId && !settingsOverride) {
           const data = await getLive2DSettings(modelId);
           settingsRef.current = data.settings;
+          expressionsRef.current = data.expressions;
           applyMood();
         }
 
@@ -190,6 +224,8 @@ export function Live2DCharacter({
       disposed = true;
       modelRef.current = null;
       settingsRef.current = null;
+      expressionsRef.current = [];
+      onCoreReady?.(null);
       (host as any).__observer?.disconnect();
       try {
         model?.internalModel?.off("afterMotionUpdate", onAfterMotion);

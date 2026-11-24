@@ -16,12 +16,30 @@ PUBLIC_DIR = Path(__file__).resolve().parents[2] / "public"
 PRODUCT_ROOT = Path(__file__).resolve().parents[3]
 USER_MODEL_SETTINGS_DIR = PRODUCT_ROOT / "user_data" / "live2d" / "model_settings"
 
+PARAM_RANGES: dict[str, tuple[float, float, float]] = {
+    "ParamEyeLOpen": (0.0, 1.0, 1.0),
+    "ParamEyeROpen": (0.0, 1.0, 1.0),
+    "ParamMouthOpenY": (0.0, 1.0, 0.0),
+    "ParamCheek": (0.0, 1.0, 0.0),
+    "ParamBreath": (0.0, 1.0, 0.5),
+    "ParamAngleX": (-30.0, 30.0, 0.0),
+    "ParamAngleY": (-30.0, 30.0, 0.0),
+    "ParamAngleZ": (-30.0, 30.0, 0.0),
+    "ParamBodyAngleX": (-10.0, 10.0, 0.0),
+    "ParamBodyAngleY": (-10.0, 10.0, 0.0),
+    "ParamBodyAngleZ": (-10.0, 10.0, 0.0),
+}
+
 
 class VisualDraft(BaseModel):
     kind: str
     name: str
     manifest_json: str = "{}"
     preview_asset_id: str | None = None
+
+
+class Live2DSettingsDraft(BaseModel):
+    settings: dict[str, Any]
 
 
 def core(request: Request) -> CoreClient:
@@ -178,21 +196,48 @@ async def get_live2d_settings(model_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="model settings not found")
     model_data = json.loads(path.read_text(encoding="utf-8"))
     refs = model_data.get("FileReferences") or {}
-    expressions = [
-        {"name": item.get("Name", ""), "file": item.get("File", "")}
-        for item in refs.get("Expressions", [])
-    ]
+    expressions = []
+    for item in refs.get("Expressions", []):
+        params = []
+        expression_file = path.parent / str(item.get("File") or "")
+        if expression_file.is_file():
+            try:
+                expression = json.loads(expression_file.read_text(encoding="utf-8"))
+                params = [
+                    {
+                        "id": op.get("Id", ""),
+                        "value": op.get("Value", 0),
+                        "blend": op.get("Blend", "Add"),
+                    }
+                    for op in expression.get("Parameters", [])
+                ]
+            except json.JSONDecodeError:
+                params = []
+        expressions.append(
+            {
+                "name": item.get("Name", ""),
+                "file": item.get("File", ""),
+                "params": params,
+            }
+        )
     parameters = []
     display_info = refs.get("DisplayInfo")
     if display_info:
         cdi_path = path.parent / display_info
         if cdi_path.is_file():
             cdi = json.loads(cdi_path.read_text(encoding="utf-8"))
+            base = settings.get("base") or {}
             parameters = [
                 {
                     "id": item.get("Id", ""),
                     "name": item.get("Name", ""),
                     "group_id": item.get("GroupId", ""),
+                    "min": PARAM_RANGES.get(item.get("Id", ""), (-1.0, 1.0, 0.0))[0],
+                    "max": PARAM_RANGES.get(item.get("Id", ""), (-1.0, 1.0, 0.0))[1],
+                    "default": base.get(
+                        item.get("Id", ""),
+                        PARAM_RANGES.get(item.get("Id", ""), (-1.0, 1.0, 0.0))[2],
+                    ),
                 }
                 for item in cdi.get("Parameters", [])
             ]
@@ -202,3 +247,25 @@ async def get_live2d_settings(model_id: str) -> dict[str, Any]:
         "expressions": expressions,
         "parameters": parameters,
     }
+
+
+@router.put("/live2d/models/{model_id}/settings")
+async def save_live2d_settings(
+    model_id: str,
+    draft: Live2DSettingsDraft,
+) -> dict[str, Any]:
+    path = model_file_by_id(model_id)
+    if path is None:
+        raise HTTPException(status_code=404, detail="model not found")
+    settings = draft.settings
+    labels = settings.get("labels") or []
+    names = {str(item.get("name")) for item in labels if item.get("name")}
+    if not names or settings.get("default_label") not in names:
+        raise HTTPException(status_code=400, detail="default label is required")
+    USER_MODEL_SETTINGS_DIR.mkdir(parents=True, exist_ok=True)
+    target = USER_MODEL_SETTINGS_DIR / f"{model_id}.json"
+    target.write_text(
+        json.dumps(settings, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return {"settings": settings}

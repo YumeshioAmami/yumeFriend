@@ -14,6 +14,7 @@ import {
 } from "./api";
 import { FeatureDrawer } from "./FeatureDrawer";
 import { Live2DCharacter } from "./Live2DCharacter";
+import { Live2DSettingsModal } from "./Live2DSettings";
 import { useApp, type Settings, type Theme } from "./store";
 
 const LIVE2D_PROPRIETARY_LICENSE =
@@ -267,6 +268,7 @@ function SettingsModal() {
   const [runtimeAgree, setRuntimeAgree] = useState(false);
   const [runtimeProgress, setRuntimeProgress] = useState("");
   const [runtimeMessage, setRuntimeMessage] = useState("");
+  const [live2dOpen, setLive2dOpen] = useState(false);
 
   useEffect(() => {
     if (settingsOpen) setDraft(settings);
@@ -442,6 +444,13 @@ function SettingsModal() {
             {runtimeMessage && (
               <span className="text-xs text-[var(--muted)]">{runtimeMessage}</span>
             )}
+            <button
+              type="button"
+              className="rounded border border-stone-300 px-3 py-1.5 text-xs text-stone-600"
+              onClick={() => setLive2dOpen(true)}
+            >
+              编辑模型标签
+            </button>
           </div>
         </div>
         <div className="mt-4 border-t border-stone-200 pt-3">
@@ -485,6 +494,7 @@ function SettingsModal() {
           <button className="rounded bg-stone-800 px-3 py-2 text-sm text-white">保存</button>
         </div>
       </form>
+      <Live2DSettingsModal open={live2dOpen} onClose={() => setLive2dOpen(false)} />
     </div>
   );
 }

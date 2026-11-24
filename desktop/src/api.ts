@@ -485,10 +485,54 @@ export type Live2DSettings = {
   }>;
 };
 
+export type Live2DModel = {
+  id: string;
+  name: string;
+  model_url: string;
+  has_settings: boolean;
+  is_default: boolean;
+};
+
+export type Live2DParameter = {
+  id: string;
+  name: string;
+  group_id: string;
+  min: number;
+  max: number;
+  default: number;
+};
+
+export type Live2DSettingsResponse = {
+  model: { id: string; model_url: string };
+  settings: Live2DSettings;
+  expressions: Live2DExpression[];
+  parameters: Live2DParameter[];
+};
+
+export type Live2DExpression = {
+  name: string;
+  file: string;
+  params: Array<{ id: string; value: number; blend: string }>;
+};
+
+export function listLive2DModels(): Promise<{ items: Live2DModel[] }> {
+  return request("/live2d/models");
+}
+
 export function getLive2DSettings(
   modelId: string,
-): Promise<{ settings: Live2DSettings }> {
+): Promise<Live2DSettingsResponse> {
   return request(`/live2d/models/${modelId}/settings`);
+}
+
+export function saveLive2DSettings(
+  modelId: string,
+  settings: Live2DSettings,
+): Promise<{ settings: Live2DSettings }> {
+  return request(`/live2d/models/${modelId}/settings`, {
+    method: "PUT",
+    body: JSON.stringify({ settings }),
+  });
 }
 
 export function getLive2DRuntimeStatus(): Promise<Live2DRuntimeStatus> {
