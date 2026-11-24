@@ -32,7 +32,13 @@ function formatDateDivider(value: string): string {
 
 function Avatar({ friend }: { friend: Friend }) {
   return (
-    <div className="avatar !h-[28px] !w-[28px] !text-sm">{friend.name.slice(0, 1)}</div>
+    <div className="avatar !h-[28px] !w-[28px] !text-sm">
+      {friend.avatar_asset_id ? (
+        <img src={assetUrl(friend.avatar_asset_id)} alt={friend.name} />
+      ) : (
+        friend.name.slice(0, 1)
+      )}
+    </div>
   );
 }
 

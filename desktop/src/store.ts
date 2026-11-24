@@ -2,6 +2,7 @@ import { create } from "zustand";
 import {
   classifyMessageMoods,
   createFriend,
+  deleteFriend as deleteFriendApi,
   getSettings,
   listFriends,
   listMessages,
@@ -58,6 +59,7 @@ type AppState = {
   loadFriends: () => Promise<void>;
   selectFriend: (friendId: string) => Promise<void>;
   createFriend: (name: string, personality: string) => Promise<void>;
+  deleteFriend: (friendId: string) => Promise<void>;
   sendMessage: (content: string, assetIds?: string[]) => Promise<void>;
   loadSettings: () => Promise<void>;
   saveSettings: (settings: Settings) => Promise<void>;
@@ -136,6 +138,22 @@ export const useApp = create<AppState>((set, get) => ({
         messages: [],
         createOpen: false,
       }));
+    } catch (error) {
+      set({ error: String(error) });
+    }
+  },
+
+  deleteFriend: async (friendId) => {
+    set({ error: null });
+    try {
+      await deleteFriendApi(friendId);
+      const friends = get().friends.filter((friend) => friend.id !== friendId);
+      const selectedId = friends[0]?.id ?? null;
+      set({ friends, selectedId, messages: [], panel: null });
+      if (selectedId) {
+        const result = await listMessages(selectedId);
+        set({ messages: result.items });
+      }
     } catch (error) {
       set({ error: String(error) });
     }

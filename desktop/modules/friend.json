@@ -49,7 +49,8 @@
         "last_catchup_at": "TEXT",
         "last_reflection_at": "TEXT",
         "created_at": "TEXT",
-        "updated_at": "TEXT"
+        "updated_at": "TEXT",
+        "deleted_at": "TEXT"
       }
     }
   ],
@@ -59,6 +60,12 @@
       "sql": [
         "CREATE TABLE friends (id TEXT PRIMARY KEY, name TEXT NOT NULL, personality TEXT NOT NULL DEFAULT '', custom_instructions TEXT NOT NULL DEFAULT '', avatar_asset_id TEXT, avatar_description TEXT, voice_id TEXT, voice_reply_enabled INTEGER NOT NULL DEFAULT 0, presence INTEGER NOT NULL DEFAULT 1, visual_mode TEXT NOT NULL DEFAULT 'live2d', visual_pack_id TEXT, portrait_transform_json TEXT, temperature REAL, life_enabled INTEGER NOT NULL DEFAULT 0, chat_pacing_enabled INTEGER NOT NULL DEFAULT 0, humanizer_enabled INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT, origin_device_id TEXT NOT NULL, origin_product_id TEXT NOT NULL);",
         "CREATE TABLE friend_states (friend_id TEXT PRIMARY KEY, affect_json TEXT NOT NULL DEFAULT '{}', energy REAL NOT NULL DEFAULT 0.55, concerns_json TEXT NOT NULL DEFAULT '[]', intent TEXT NOT NULL DEFAULT 'observe', inner_note TEXT NOT NULL DEFAULT '', relationship_note TEXT NOT NULL DEFAULT '', open_loops_json TEXT NOT NULL DEFAULT '[]', active_thread TEXT, last_catchup_at TEXT, last_reflection_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);"
+      ]
+    },
+    {
+      "version": 2,
+      "sql": [
+        "ALTER TABLE friend_states ADD COLUMN deleted_at TEXT;"
       ]
     }
   ],

@@ -63,6 +63,7 @@ class FriendPatch(BaseModel):
     name: str | None = None
     personality: str | None = None
     custom_instructions: str | None = None
+    avatar_asset_id: str | None = None
     visual_mode: str | None = None
     visual_pack_id: str | None = None
     life_enabled: int | None = None
@@ -374,6 +375,87 @@ async def patch_friend(
         {"id": friend_id, **patch},
     )
     return updated["record"]
+
+
+async def delete_friend_records(core: CoreClient, friend_id: str) -> None:
+    friend_entities = [
+        ("friend", "friend_states", "friend_id"),
+        ("chat", "messages", "id"),
+        ("memory", "memories", "id"),
+        ("schedule", "schedules", "id"),
+        ("thought", "thoughts", "id"),
+        ("expression", "expression_samples", "id"),
+        ("expression", "style_profiles", "friend_id"),
+        ("expression", "style_events", "id"),
+        ("document", "documents", "id"),
+        ("life", "life_projects", "id"),
+        ("life", "life_activities", "id"),
+        ("life", "friend_life", "friend_id"),
+    ]
+    messages = await core.read(
+        "chat",
+        "messages",
+        filter={"friend_id": friend_id},
+        limit=10000,
+    )
+    documents = await core.read(
+        "document",
+        "documents",
+        filter={"friend_id": friend_id},
+        limit=10000,
+    )
+    for message in messages.get("items", []):
+        assets = await core.read(
+            "chat",
+            "message_assets",
+            filter={"message_id": message["id"]},
+            limit=10000,
+        )
+        for asset in assets.get("items", []):
+            await core.write(
+                "chat",
+                "message_assets",
+                "delete",
+                {
+                    "message_id": asset["message_id"],
+                    "role": asset["role"],
+                    "position": asset["position"],
+                },
+            )
+    for document in documents.get("items", []):
+        chunks = await core.read(
+            "document",
+            "document_chunks",
+            filter={"document_id": document["id"]},
+            limit=10000,
+        )
+        for chunk in chunks.get("items", []):
+            await core.write(
+                "document",
+                "document_chunks",
+                "delete",
+                {"document_id": chunk["document_id"], "seq": chunk["seq"]},
+            )
+    for module_id, entity, key in friend_entities:
+        result = await core.read(
+            module_id,
+            entity,
+            filter={"friend_id": friend_id},
+            limit=10000,
+        )
+        for item in result.get("items", []):
+            await core.write(module_id, entity, "delete", {key: item[key]})
+
+
+@app.delete("/api/v1/friends/{friend_id}", status_code=204)
+async def delete_friend(request: Request, friend_id: str) -> Response:
+    core = get_core(request)
+    result = await core.read("friend", "friends", filter={"id": friend_id}, limit=1)
+    if not result.get("items"):
+        raise HTTPException(status_code=404, detail="friend not found")
+    await delete_friend_records(core, friend_id)
+    await core.write("friend", "friends", "delete", {"id": friend_id})
+    return Response(status_code=204)
 
 
 async def start_reply(

@@ -6,6 +6,8 @@ export type Friend = {
   name: string;
   personality: string;
   custom_instructions: string;
+  avatar_asset_id?: string | null;
+  presence?: number;
   created_at: string;
   visual_mode?: string;
   visual_pack_id?: string | null;
@@ -437,6 +439,10 @@ export function patchFriend(
     method: "PATCH",
     body: JSON.stringify(data),
   });
+}
+
+export function deleteFriend(friendId: string): Promise<void> {
+  return request(`/friends/${friendId}`, { method: "DELETE" });
 }
 
 export function listVisualPacks(): Promise<ListResult<VisualPack>> {

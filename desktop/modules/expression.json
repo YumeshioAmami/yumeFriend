@@ -32,7 +32,8 @@
         "profile_json": "TEXT",
         "version": "INTEGER",
         "created_at": "TEXT",
-        "updated_at": "TEXT"
+        "updated_at": "TEXT",
+        "deleted_at": "TEXT"
       }
     },
     {
@@ -51,6 +52,7 @@
         "before_profile_json": "TEXT",
         "after_profile_json": "TEXT",
         "created_at": "TEXT",
+        "deleted_at": "TEXT",
         "origin_device_id": "TEXT",
         "origin_product_id": "TEXT"
       }
@@ -63,6 +65,13 @@
         "CREATE TABLE expression_samples (id TEXT PRIMARY KEY, friend_id TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'phrase', text TEXT NOT NULL, situation TEXT NOT NULL DEFAULT '', score REAL NOT NULL DEFAULT 1.0, source TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT, origin_device_id TEXT NOT NULL, origin_product_id TEXT NOT NULL);",
         "CREATE TABLE style_profiles (friend_id TEXT PRIMARY KEY, profile_json TEXT NOT NULL DEFAULT '', version INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);",
         "CREATE TABLE style_events (id TEXT PRIMARY KEY, friend_id TEXT NOT NULL, event_type TEXT NOT NULL, summary TEXT, changes_json TEXT, before_version INTEGER NOT NULL DEFAULT 0, after_version INTEGER NOT NULL DEFAULT 0, before_profile_json TEXT NOT NULL DEFAULT '', after_profile_json TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, origin_device_id TEXT NOT NULL, origin_product_id TEXT NOT NULL);"
+      ]
+    },
+    {
+      "version": 2,
+      "sql": [
+        "ALTER TABLE style_profiles ADD COLUMN deleted_at TEXT;",
+        "ALTER TABLE style_events ADD COLUMN deleted_at TEXT;"
       ]
     }
   ],

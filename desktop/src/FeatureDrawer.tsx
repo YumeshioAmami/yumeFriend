@@ -36,6 +36,7 @@ import {
   searchDocuments,
   settleSchedule,
   uploadDocument,
+  uploadAsset,
   updateMemory,
   updateSchedule,
   updateThought,
@@ -981,25 +982,63 @@ function LogPanel() {
 }
 
 function PersonaPanel({ friend }: { friend: Friend }) {
-  const { loadFriends } = useApp();
+  const { loadFriends, deleteFriend } = useApp();
   const [name, setName] = useState(friend.name);
   const [personality, setPersonality] = useState(friend.personality);
   const [instructions, setInstructions] = useState(friend.custom_instructions);
+  const [presence, setPresence] = useState(friend.presence ?? 1);
+  const [avatarId, setAvatarId] = useState(friend.avatar_asset_id ?? null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
     setName(friend.name);
     setPersonality(friend.personality);
     setInstructions(friend.custom_instructions);
-  }, [friend.id, friend.name, friend.personality, friend.custom_instructions]);
+    setPresence(friend.presence ?? 1);
+    setAvatarId(friend.avatar_asset_id ?? null);
+  }, [
+    friend.id,
+    friend.name,
+    friend.personality,
+    friend.custom_instructions,
+    friend.presence,
+    friend.avatar_asset_id,
+  ]);
 
   return (
     <div className="space-y-6">
       <section>
         <div className="panel-title">人格</div>
         <div className="space-y-2">
+          <div className="flex items-center gap-3">
+            <div className="avatar !h-16 !w-16 !text-2xl">
+              {avatarId ? (
+                <img src={assetUrl(avatarId)} alt={friend.name} />
+              ) : (
+                friend.name.slice(0, 1)
+              )}
+            </div>
+            <label className="cursor-pointer rounded border border-stone-300 px-3 py-1.5 text-xs text-stone-600">
+              上传头像
+              <input
+                className="hidden"
+                type="file"
+                accept="image/*"
+                onChange={async (event) => {
+                  const file = event.target.files?.[0];
+                  if (!file) return;
+                  const asset = await uploadAsset(file);
+                  await patchFriend(friend.id, { avatar_asset_id: asset.id });
+                  setAvatarId(asset.id);
+                  await loadFriends();
+                }}
+              />
+            </label>
+          </div>
           <input
             className="w-full rounded border border-stone-300 px-2 py-1.5 text-sm"
             value={name}
+            placeholder="名字"
             onChange={(event) => setName(event.target.value)}
           />
           <textarea
@@ -1014,6 +1053,14 @@ function PersonaPanel({ friend }: { friend: Friend }) {
             value={instructions}
             onChange={(event) => setInstructions(event.target.value)}
           />
+          <label className="flex items-center gap-2 text-xs text-stone-600">
+            <input
+              type="checkbox"
+              checked={presence === 1}
+              onChange={(event) => setPresence(event.target.checked ? 1 : 0)}
+            />
+            在场（允许主动消息）
+          </label>
           <button
             className="rounded bg-stone-800 px-3 py-1.5 text-xs text-white"
             onClick={async () => {
@@ -1021,6 +1068,7 @@ function PersonaPanel({ friend }: { friend: Friend }) {
                 name,
                 personality,
                 custom_instructions: instructions,
+                presence,
               });
               await loadFriends();
             }}
@@ -1036,6 +1084,33 @@ function PersonaPanel({ friend }: { friend: Friend }) {
       <section>
         <div className="panel-title">呈现</div>
         <VisualPanel friend={friend} />
+      </section>
+      <section>
+        <div className="panel-title">删除朋友</div>
+        {confirmDelete ? (
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-stone-500">连同聊天、记忆等数据一起删除？</span>
+            <button
+              className="rounded bg-red-600 px-3 py-1.5 text-white"
+              onClick={() => void deleteFriend(friend.id)}
+            >
+              确认删除
+            </button>
+            <button
+              className="rounded border border-stone-300 px-3 py-1.5 text-stone-600"
+              onClick={() => setConfirmDelete(false)}
+            >
+              取消
+            </button>
+          </div>
+        ) : (
+          <button
+            className="rounded border border-red-200 px-3 py-1.5 text-xs text-red-500"
+            onClick={() => setConfirmDelete(true)}
+          >
+            删除朋友
+          </button>
+        )}
       </section>
     </div>
   );
