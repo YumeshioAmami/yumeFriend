@@ -257,24 +257,24 @@ export default function PetWindow() {
               {currentBubble.text}
             </div>
           )}
-          {controlsVisible && (
-            <div className="pet-controls">
-              <div className="pet-input">
-                <input
-                  value={draft}
-                  placeholder="说点什么…"
-                  onChange={(event) => setDraft(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && !event.shiftKey) {
-                      event.preventDefault();
-                      submit();
-                    }
-                  }}
-                />
-                <button disabled={sending || !draft.trim()} onClick={submit}>
-                  发送
-                </button>
-              </div>
+          <div className="pet-controls">
+            <div className="pet-input">
+              <input
+                value={draft}
+                placeholder="说点什么…"
+                onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    submit();
+                  }
+                }}
+              />
+              <button disabled={sending || !draft.trim()} onClick={submit}>
+                发送
+              </button>
+            </div>
+            {controlsVisible && (
               <div className="pet-actions">
                 <button onClick={() => window.yumeFriend?.openMain?.()}>主界面</button>
                 <button onClick={switchFriend} disabled={friends.length < 2}>
@@ -298,8 +298,8 @@ export default function PetWindow() {
                 <button onClick={() => adjustScale(scale + 0.1)}>＋</button>
                 <button onClick={() => window.yumeFriend?.closePet?.()}>关闭</button>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       )}
 
