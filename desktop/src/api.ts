@@ -24,6 +24,8 @@ export type Message = {
   voice_asset_id?: string | null;
   mood?: string | null;
   segments?: MoodUnit[];
+  sources?: SearchHit[];
+  tool_calls?: Array<Record<string, unknown>>;
 };
 
 export type MoodUnit = {
@@ -173,6 +175,14 @@ export function classifyMessageMoods(
   messageId: string,
 ): Promise<{ mood: string | null; segments: MoodUnit[] }> {
   return request(`/messages/${messageId}/moods`, { method: "POST" });
+}
+
+export function stopMessage(messageId: string): Promise<{ ok: boolean }> {
+  return request(`/messages/${messageId}/stop`, { method: "POST" });
+}
+
+export function retryMessage(messageId: string): Promise<{ reply_message: Message }> {
+  return request(`/messages/${messageId}/retry`, { method: "POST" });
 }
 
 export function getSettings(): Promise<ListResult<{ key: string; value_json: string }>> {

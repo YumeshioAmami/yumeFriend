@@ -79,6 +79,7 @@ const icons = {
 function MessageRow({ message, friend }: { message: Message; friend: Friend }) {
   const assistant = message.role === "assistant";
   const refreshMessages = useApp((state) => state.refreshMessages);
+  const retryMessage = useApp((state) => state.retryMessage);
   if (message.role === "system") {
     return (
       <div className="my-4 text-center text-[11px] text-[var(--muted)]">{message.content}</div>
@@ -131,6 +132,40 @@ function MessageRow({ message, friend }: { message: Message; friend: Friend }) {
         )}
         {message.error_text && (
           <div className="mt-1 text-[12px] text-red-600">{message.error_text}</div>
+        )}
+        {assistant && message.status === "partial" && (
+          <div className="mt-1 text-[11px] text-stone-400">（未说完）</div>
+        )}
+        {assistant && (message.status === "error" || message.status === "partial") && (
+          <button
+            className="mt-2 text-[11px] text-stone-500 hover:text-stone-800"
+            onClick={() => void retryMessage(message.id)}
+          >
+            重试
+          </button>
+        )}
+        {message.sources && message.sources.length > 0 && (
+          <div className="mt-2 space-y-1 text-[11px]">
+            {message.sources.map((source, index) => (
+              <a
+                key={`${source.url}-${index}`}
+                className="block truncate text-[var(--accent)] underline"
+                href={source.url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {source.title || source.url || `来源 ${index + 1}`}
+              </a>
+            ))}
+          </div>
+        )}
+        {message.tool_calls && message.tool_calls.length > 0 && (
+          <details className="mt-2 text-[11px] text-stone-400">
+            <summary className="cursor-pointer">工具记录</summary>
+            <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-stone-100 p-2 text-[10px]">
+              {JSON.stringify(message.tool_calls, null, 2)}
+            </pre>
+          </details>
         )}
       </div>
     </div>
@@ -511,12 +546,14 @@ function Chat() {
     setImmersive,
     refreshMessages,
     features,
+    stopMessage,
   } = useApp();
   const [draft, setDraft] = useState("");
   const [assetIds, setAssetIds] = useState<string[]>([]);
   const [recording, setRecording] = useState(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const friend = friends.find((item) => item.id === selectedId);
+  const streamingMessage = [...messages].reverse().find((message) => message.status === "streaming");
 
   if (!friend) {
     return (
@@ -671,7 +708,7 @@ function Chat() {
             className="flex min-w-0 flex-1 items-end"
           onSubmit={(event) => {
             event.preventDefault();
-            if (!draft.trim()) return;
+            if (sending || !draft.trim()) return;
             void sendMessage(draft, assetIds);
             setDraft("");
             setAssetIds([]);
@@ -691,10 +728,16 @@ function Chat() {
             }}
           />
           <button
-            disabled={sending || !draft.trim()}
+            type={sending ? "button" : "submit"}
+            disabled={!sending && !draft.trim()}
             className="send-button disabled:opacity-40"
+            onClick={() => {
+              if (sending && streamingMessage) {
+                void stopMessage(streamingMessage.id);
+              }
+            }}
           >
-            发送
+            {sending ? "停止" : "发送"}
           </button>
           </form>
         </div>

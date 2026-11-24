@@ -70,11 +70,21 @@ async def message_with_assets(core: CoreClient, message: dict[str, Any]) -> dict
         segments = json.loads(message.get("segments_json") or "[]")
     except json.JSONDecodeError:
         segments = []
+    try:
+        sources = json.loads(message.get("sources_json") or "[]")
+    except json.JSONDecodeError:
+        sources = []
+    try:
+        tool_calls = json.loads(message.get("tool_calls_json") or "[]")
+    except json.JSONDecodeError:
+        tool_calls = []
     return {
         **message,
         "image_asset_ids": images,
         "voice_asset_id": voice,
         "segments": segments,
+        "sources": sources,
+        "tool_calls": tool_calls,
     }
 
 

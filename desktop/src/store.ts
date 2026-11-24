@@ -5,8 +5,10 @@ import {
   getSettings,
   listFriends,
   listMessages,
+  retryMessage as retryMessageApi,
   saveSetting,
   sendMessage,
+  stopMessage as stopMessageApi,
   streamUrl,
   type Friend,
   type Message,
@@ -67,6 +69,8 @@ type AppState = {
   saveFeatures: (features: Features) => Promise<void>;
   refreshMessages: () => Promise<void>;
   classifyMessage: (messageId: string) => Promise<void>;
+  retryMessage: (messageId: string) => Promise<void>;
+  stopMessage: (messageId: string) => Promise<void>;
 };
 
 const emptySettings: Settings = {
@@ -146,57 +150,31 @@ export const useApp = create<AppState>((set, get) => ({
       set((state) => ({
         messages: [...state.messages, result.user_message, result.reply_message],
       }));
-      const source = new EventSource(streamUrl(result.reply_message.id));
-      let closed = false;
-
-      source.addEventListener("delta", (event) => {
-        const data = JSON.parse((event as MessageEvent).data) as { text: string };
-        set((state) => ({
-          messages: state.messages.map((message) =>
-            message.id === result.reply_message.id
-              ? { ...message, content: message.content + data.text }
-              : message,
-          ),
-        }));
-      });
-
-      source.addEventListener("end", (event) => {
-        const data = JSON.parse((event as MessageEvent).data) as { message: Message };
-        set((state) => ({
-          messages: state.messages.map((message) =>
-            message.id === result.reply_message.id ? data.message : message,
-          ),
-        }));
-        closed = true;
-        source.close();
-        set({ sending: false });
-      });
-
-      source.addEventListener("error", (event) => {
-        const raw = (event as MessageEvent).data;
-        if (!raw) return;
-        const data = JSON.parse(raw) as { message: string };
-        set((state) => ({
-          messages: state.messages.map((message) =>
-            message.id === result.reply_message.id
-              ? { ...message, status: "error", error_text: data.message }
-              : message,
-          ),
-          error: data.message,
-        }));
-        closed = true;
-        source.close();
-        set({ sending: false });
-      });
-
-      source.onerror = () => {
-        if (!closed) {
-          source.close();
-          set({ sending: false });
-        }
-      };
+      listenReply(result.reply_message);
     } catch (error) {
       set({ error: String(error), sending: false });
+    }
+  },
+
+  retryMessage: async (messageId) => {
+    if (get().sending) return;
+    set({ sending: true, error: null });
+    try {
+      const result = await retryMessageApi(messageId);
+      set((state) => ({
+        messages: [...state.messages, result.reply_message],
+      }));
+      listenReply(result.reply_message);
+    } catch (error) {
+      set({ error: String(error), sending: false });
+    }
+  },
+
+  stopMessage: async (messageId) => {
+    try {
+      await stopMessageApi(messageId);
+    } catch (error) {
+      set({ error: String(error) });
     }
   },
 
@@ -276,3 +254,55 @@ export const useApp = create<AppState>((set, get) => ({
     }
   },
 }));
+
+function listenReply(replyMessage: Message) {
+  const source = new EventSource(streamUrl(replyMessage.id));
+  let closed = false;
+
+  source.addEventListener("delta", (event) => {
+    const data = JSON.parse((event as MessageEvent).data) as { text: string };
+    useApp.setState((state) => ({
+      messages: state.messages.map((message) =>
+        message.id === replyMessage.id
+          ? { ...message, content: message.content + data.text }
+          : message,
+      ),
+    }));
+  });
+
+  source.addEventListener("end", (event) => {
+    const data = JSON.parse((event as MessageEvent).data) as { message: Message };
+    useApp.setState((state) => ({
+      messages: state.messages.map((message) =>
+        message.id === replyMessage.id ? data.message : message,
+      ),
+      sending: false,
+    }));
+    closed = true;
+    source.close();
+  });
+
+  source.addEventListener("error", (event) => {
+    const raw = (event as MessageEvent).data;
+    if (!raw) return;
+    const data = JSON.parse(raw) as { message: string };
+    useApp.setState((state) => ({
+      messages: state.messages.map((message) =>
+        message.id === replyMessage.id
+          ? { ...message, status: "error", error_text: data.message }
+          : message,
+      ),
+      error: data.message,
+      sending: false,
+    }));
+    closed = true;
+    source.close();
+  });
+
+  source.onerror = () => {
+    if (!closed) {
+      source.close();
+      useApp.setState({ sending: false });
+    }
+  };
+}

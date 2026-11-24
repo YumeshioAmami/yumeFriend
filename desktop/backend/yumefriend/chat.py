@@ -208,21 +208,25 @@ async def generate_reply(
     client = AsyncOpenAI(base_url=config.base_url or None, api_key=config.api_key)
     raw_content = ""
     parser = BubbleSeparatorParser()
+    cancelled = False
     try:
-        stream = await client.chat.completions.create(
-            model=config.model,
-            messages=build_prompt(friend, history, context, image_urls),
-            temperature=0.7,
-            stream=True,
-        )
-        async for chunk in stream:
-            delta = chunk.choices[0].delta.content or ""
-            if not delta:
-                continue
-            raw_content += delta
-            visible = parser.feed(delta)
-            if visible:
-                streams.push(message_id, {"type": "delta", "data": {"text": visible}})
+        try:
+            stream = await client.chat.completions.create(
+                model=config.model,
+                messages=build_prompt(friend, history, context, image_urls),
+                temperature=0.7,
+                stream=True,
+            )
+            async for chunk in stream:
+                delta = chunk.choices[0].delta.content or ""
+                if not delta:
+                    continue
+                raw_content += delta
+                visible = parser.feed(delta)
+                if visible:
+                    streams.push(message_id, {"type": "delta", "data": {"text": visible}})
+        except asyncio.CancelledError:
+            cancelled = True
 
         tail = parser.flush()
         if tail:
@@ -236,7 +240,7 @@ async def generate_reply(
                 "id": message_id,
                 "content": visible_content(raw_content),
                 "segments_json": json.dumps(parse_units(raw_content), ensure_ascii=False),
-                "status": "completed",
+                "status": "partial" if cancelled else "completed",
             },
         )
         streams.push(
@@ -246,14 +250,15 @@ async def generate_reply(
                 "data": {"message": await message_with_assets(core, final["record"])},
             },
         )
-        await extract_memories(
-            core,
-            client,
-            config,
-            friend["id"],
-            history,
-            visible_content(raw_content),
-        )
+        if not cancelled:
+            await extract_memories(
+                core,
+                client,
+                config,
+                friend["id"],
+                history,
+                visible_content(raw_content),
+            )
     except Exception as error:  # noqa: BLE001
         await core.write(
             "chat",

@@ -78,6 +78,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.core = core
     app.state.streams = StreamRegistry()
     app.state.tasks = set()
+    app.state.reply_tasks = {}
     await seed_default_visuals(core)
     logger.info("yumeFriend backend started")
     reminder = asyncio.create_task(reminder_loop(core))
@@ -375,6 +376,87 @@ async def patch_friend(
     return updated["record"]
 
 
+async def start_reply(
+    request: Request,
+    friend_id: str,
+    user_content: str,
+    *,
+    history: list[dict[str, Any]] | None = None,
+    image_urls: list[str] | None = None,
+) -> dict[str, Any]:
+    core = get_core(request)
+    reply = await core.write(
+        "chat",
+        "messages",
+        "create",
+        {
+            "friend_id": friend_id,
+            "role": "assistant",
+            "kind": "chat",
+            "content": "",
+            "proactive": 0,
+            "status": "streaming",
+        },
+    )
+    assistant = reply["record"]
+    friend_result = await core.read(
+        "friend",
+        "friends",
+        filter={"id": friend_id},
+        limit=1,
+    )
+    if history is None:
+        history_result = await core.read(
+            "chat",
+            "messages",
+            filter={"friend_id": friend_id},
+            limit=80,
+        )
+        history = sorted(
+            history_result.get("items", []),
+            key=lambda item: item.get("created_at", ""),
+        )
+    friend = friend_result["items"][0]
+    context = await load_prompt_context(core, friend_id, user_content)
+    config = await load_model_config(core)
+    streams: StreamRegistry = request.app.state.streams
+    streams.create(assistant["id"])
+    if config is None:
+        await core.write(
+            "chat",
+            "messages",
+            "update",
+            {"id": assistant["id"], "status": "error", "error_text": "模型未配置"},
+        )
+        streams.push(
+            assistant["id"],
+            {"type": "error", "data": {"code": "model_error", "message": "模型未配置"}},
+        )
+        streams.finish(assistant["id"])
+        return assistant
+    task = asyncio.create_task(
+        generate_reply(
+            core,
+            streams,
+            assistant["id"],
+            friend,
+            history,
+            context,
+            config,
+            image_urls,
+        )
+    )
+    request.app.state.tasks.add(task)
+    request.app.state.reply_tasks[assistant["id"]] = task
+
+    def cleanup(_: asyncio.Task) -> None:
+        request.app.state.tasks.discard(task)
+        request.app.state.reply_tasks.pop(assistant["id"], None)
+
+    task.add_done_callback(cleanup)
+    return assistant
+
+
 @app.get("/api/v1/friends/{friend_id}/messages")
 async def messages(request: Request, friend_id: str) -> dict[str, Any]:
     result = await get_core(request).read(
@@ -432,68 +514,12 @@ async def send_message(
     )
     image_urls = [asset_data_url(asset_id) for asset_id in draft.asset_ids]
     if draft.reply:
-        reply = await core.write(
-            "chat",
-            "messages",
-            "create",
-            {
-                "friend_id": friend_id,
-                "role": "assistant",
-                "kind": "chat",
-                "content": "",
-                "proactive": 0,
-                "status": "streaming",
-            },
+        assistant = await start_reply(
+            request,
+            friend_id,
+            draft.content,
+            image_urls=image_urls,
         )
-        assistant = reply["record"]
-        friend_result = await core.read(
-            "friend",
-            "friends",
-            filter={"id": friend_id},
-            limit=1,
-        )
-        history_result = await core.read(
-            "chat",
-            "messages",
-            filter={"friend_id": friend_id},
-            limit=80,
-        )
-        friend = friend_result["items"][0]
-        history = sorted(
-            history_result.get("items", []),
-            key=lambda item: item.get("created_at", ""),
-        )
-        context = await load_prompt_context(core, friend_id, draft.content)
-        config = await load_model_config(core)
-        streams: StreamRegistry = request.app.state.streams
-        streams.create(assistant["id"])
-        if config is None:
-            await core.write(
-                "chat",
-                "messages",
-                "update",
-                {"id": assistant["id"], "status": "error", "error_text": "模型未配置"},
-            )
-            streams.push(
-                assistant["id"],
-                {"type": "error", "data": {"code": "model_error", "message": "模型未配置"}},
-            )
-            streams.finish(assistant["id"])
-        else:
-            task = asyncio.create_task(
-                generate_reply(
-                    core,
-                    streams,
-                    assistant["id"],
-                    friend,
-                    history,
-                    context,
-                    config,
-                    image_urls,
-                )
-            )
-            request.app.state.tasks.add(task)
-            task.add_done_callback(request.app.state.tasks.discard)
     else:
         assistant = None
 
@@ -524,6 +550,73 @@ async def message_stream(request: Request, message_id: str) -> StreamingResponse
             streams.remove(message_id)
 
     return StreamingResponse(events(), media_type="text/event-stream")
+
+
+@app.post("/api/v1/messages/{message_id}/stop")
+async def stop_message(request: Request, message_id: str) -> dict[str, bool]:
+    task = request.app.state.reply_tasks.get(message_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="stream not found")
+    task.cancel()
+    return {"ok": True}
+
+
+@app.post("/api/v1/messages/{message_id}/retry")
+async def retry_message(request: Request, message_id: str) -> dict[str, Any]:
+    core = get_core(request)
+    result = await core.read("chat", "messages", filter={"id": message_id}, limit=1)
+    if not result.get("items"):
+        raise HTTPException(status_code=404, detail="message not found")
+    source = result["items"][0]
+    if source.get("role") != "assistant":
+        raise HTTPException(status_code=400, detail="message is not an assistant reply")
+    friend_id = str(source["friend_id"])
+    history_result = await core.read(
+        "chat",
+        "messages",
+        filter={"friend_id": friend_id},
+        limit=500,
+    )
+    history = sorted(
+        history_result.get("items", []),
+        key=lambda item: item.get("created_at", ""),
+    )
+    assistant_index = next(
+        (index for index, item in enumerate(history) if item.get("id") == message_id),
+        len(history),
+    )
+    user_message = next(
+        (
+            item
+            for item in reversed(history[:assistant_index])
+            if item.get("role") == "user"
+        ),
+        None,
+    )
+    if user_message is None:
+        raise HTTPException(status_code=400, detail="previous user message not found")
+    user_index = next(
+        index for index, item in enumerate(history) if item.get("id") == user_message["id"]
+    )
+    assets = await core.read(
+        "chat",
+        "message_assets",
+        filter={"message_id": user_message["id"]},
+        limit=20,
+    )
+    image_urls = [
+        asset_data_url(item["asset_id"])
+        for item in assets.get("items", [])
+        if item.get("role") == "image"
+    ]
+    reply = await start_reply(
+        request,
+        friend_id,
+        str(user_message.get("content", "")),
+        history=history[: user_index + 1],
+        image_urls=image_urls,
+    )
+    return {"reply_message": reply}
 
 
 @app.post("/api/v1/messages/{message_id}/moods")
