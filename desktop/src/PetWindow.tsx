@@ -288,44 +288,47 @@ export default function PetWindow() {
         )}
       </div>
 
-      {!locked && currentBubble?.text && (
-        <div className="pet-bubble">
-          <div className="pet-name">{friend?.name}</div>
-          {currentBubble.text}
-        </div>
-      )}
-
-      {!locked && controlsVisible && (
-        <div className="pet-controls">
-          <div className="pet-input">
-            <input
-              value={draft}
-              placeholder="说点什么…"
-              onChange={(event) => setDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  submit();
-                }
-              }}
-            />
-            <button disabled={sending || !draft.trim()} onClick={submit}>
-              发送
-            </button>
-          </div>
-          <div className="pet-actions">
-            <button onClick={() => window.yumeFriend?.openMain?.()}>主界面</button>
-            <button onClick={switchFriend} disabled={friends.length < 2}>
-              换朋友
-            </button>
-            <button onClick={() => setLocked(true)}>锁定</button>
-            <button onClick={() => setMuted((value) => !value)}>
-              {muted ? "声音" : "静音"}
-            </button>
-            <button onClick={() => adjustScale(scale - 0.1)}>－</button>
-            <button onClick={() => adjustScale(scale + 0.1)}>＋</button>
-            <button onClick={() => window.yumeFriend?.closePet?.()}>关闭</button>
-          </div>
+      {!locked && (
+        <div className="pet-top-ui">
+          {currentBubble?.text && (
+            <div className="pet-bubble">
+              <div className="pet-name">{friend?.name}</div>
+              {currentBubble.text}
+            </div>
+          )}
+          {controlsVisible && (
+            <div className="pet-controls">
+              <div className="pet-input">
+                <input
+                  value={draft}
+                  placeholder="说点什么…"
+                  onChange={(event) => setDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      submit();
+                    }
+                  }}
+                />
+                <button disabled={sending || !draft.trim()} onClick={submit}>
+                  发送
+                </button>
+              </div>
+              <div className="pet-actions">
+                <button onClick={() => window.yumeFriend?.openMain?.()}>主界面</button>
+                <button onClick={switchFriend} disabled={friends.length < 2}>
+                  换朋友
+                </button>
+                <button onClick={() => setLocked(true)}>锁定</button>
+                <button onClick={() => setMuted((value) => !value)}>
+                  {muted ? "声音" : "静音"}
+                </button>
+                <button onClick={() => adjustScale(scale - 0.1)}>－</button>
+                <button onClick={() => adjustScale(scale + 0.1)}>＋</button>
+                <button onClick={() => window.yumeFriend?.closePet?.()}>关闭</button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

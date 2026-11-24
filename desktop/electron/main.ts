@@ -30,7 +30,9 @@ let petSaveTimer: NodeJS.Timeout | null = null;
 const userDataDir = path.join(repoRoot, "user_data");
 const petStateFile = path.join(userDataDir, "pet_window.json");
 const PET_BASE_WIDTH = 320;
-const PET_BASE_HEIGHT = 520;
+const PET_BASE_HEIGHT = 660;
+const PET_PREVIOUS_BASE_HEIGHT = 520;
+const PET_LAYOUT_VERSION = 2;
 const PET_MIN_SCALE = 0.6;
 const PET_MAX_SCALE = 1.8;
 
@@ -45,7 +47,7 @@ function petSize(): { width: number; height: number } {
   };
 }
 
-function readPetState(): { x?: number; y?: number; scale?: number } {
+function readPetState(): { x?: number; y?: number; scale?: number; version?: number } {
   try {
     return JSON.parse(fs.readFileSync(petStateFile, "utf8"));
   } catch {
@@ -59,7 +61,12 @@ function savePetState(): void {
   fs.mkdirSync(userDataDir, { recursive: true });
   fs.writeFileSync(
     petStateFile,
-    JSON.stringify({ x: bounds.x, y: bounds.y, scale: petScale }),
+    JSON.stringify({
+      x: bounds.x,
+      y: bounds.y,
+      scale: petScale,
+      version: PET_LAYOUT_VERSION,
+    }),
   );
 }
 
@@ -184,6 +191,9 @@ function createPetWindow(friendId?: string): void {
   petFriendId = friendId ?? "";
   const state = readPetState();
   petScale = clampPetScale(Number(state.scale) || 1);
+  if ((state.version ?? 1) < PET_LAYOUT_VERSION && typeof state.y === "number") {
+    state.y -= Math.round((PET_BASE_HEIGHT - PET_PREVIOUS_BASE_HEIGHT) * petScale);
+  }
   const size = petSize();
   petWindow = new BrowserWindow({
     width: size.width,
@@ -203,6 +213,7 @@ function createPetWindow(friendId?: string): void {
   petWindow.webContents.setZoomFactor(zoomFactor);
   petWindow.on("moved", schedulePetStateSave);
   petWindow.on("resized", schedulePetStateSave);
+  schedulePetStateSave();
   petWindow.on("closed", () => {
     petWindow = null;
     petFriendId = "";

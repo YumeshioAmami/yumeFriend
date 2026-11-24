@@ -569,25 +569,34 @@ html[data-pet="1"] #root {
 
 .pet-shell {
   position: relative;
-  display: flex;
   height: 100vh;
-  flex-direction: column;
-  justify-content: flex-end;
-  gap: 6px;
-  padding: 8px;
+  overflow: hidden;
   background: transparent;
   user-select: none;
 }
 
 .pet-preview {
+  position: absolute;
+  inset: 158px 8px 8px;
   display: flex;
   min-height: 0;
-  flex: 1;
   align-items: flex-end;
   justify-content: center;
   cursor: grab;
   touch-action: none;
   animation: pet-float 4s ease-in-out infinite;
+}
+
+.pet-top-ui {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 8px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  pointer-events: none;
 }
 
 .pet-preview:active {
@@ -621,7 +630,7 @@ html[data-pet="1"] #root {
 }
 
 .pet-bubble {
-  max-height: 112px;
+  max-height: 72px;
   overflow-y: auto;
   border: 1px solid rgba(120, 100, 80, 0.2);
   border-radius: 10px;
@@ -644,6 +653,7 @@ html[data-pet="1"] #root {
   display: flex;
   flex-direction: column;
   gap: 5px;
+  pointer-events: auto;
 }
 
 .pet-input {
