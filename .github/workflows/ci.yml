@@ -39,6 +39,10 @@ jobs:
         working-directory: android
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: YumeshioAmami/yumeCore
+          path: yumeCore-src
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -46,4 +50,4 @@ jobs:
       - uses: android-actions/setup-android@v4
       - run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
       - run: chmod +x gradlew
-      - run: ./gradlew assembleDebug --no-daemon
+      - run: ./gradlew -PyumeCoreDir=../yumeCore-src assembleDebug --no-daemon
