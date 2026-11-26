@@ -1,6 +1,7 @@
 package com.yumefriend.app
 
 import android.app.Application
+import android.util.Log
 import com.yume.core.YumeCore
 import com.yume.core.manifest.ManifestLoader
 import com.yume.core.storage.openDatabase
@@ -18,6 +19,7 @@ class YumeApp : Application() {
     override fun onCreate() {
         super.onCreate()
         PDFBoxResourceLoader.init(this)
+        val legacyDb = LegacyMigration.prepare(this)
         val modules = assets.list("")
             .orEmpty()
             .filter { it.endsWith(".json") }
@@ -32,6 +34,10 @@ class YumeApp : Application() {
         val database = openDatabase(File(filesDir, "yumefriend.db").absolutePath)
         val core = YumeCore(modules, database, deviceId, "yumeFriend")
         repository = YumeRepository(core)
+        legacyDb?.let {
+            runCatching { repository.importLegacy(it) }
+                .onFailure { error -> Log.e("YumeApp", "老版数据迁移失败", error) }
+        }
         ScheduleAlarms.ensureChannel(this)
         CoroutineScope(Dispatchers.IO).launch { ScheduleAlarms.refresh(this@YumeApp) }
     }

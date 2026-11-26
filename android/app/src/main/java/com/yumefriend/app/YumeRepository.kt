@@ -803,6 +803,14 @@ class YumeRepository(
         )
     }
 
+    fun importLegacy(dbFile: java.io.File) {
+        LegacyImport.run(
+            dbFile,
+            create = { module, entity, data -> write(module, entity, WriteOp.CREATE, data) },
+            putSetting = ::putSetting,
+        )
+    }
+
     private suspend fun streamReply(
         friend: Friend,
         userText: String,

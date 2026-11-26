@@ -15,6 +15,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,10 +27,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -61,6 +64,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -113,7 +117,6 @@ private fun YumeRoot(repository: YumeRepository) {
             )
         } else {
             Scaffold(
-                topBar = { TopAppBar(title = { Text("yumeFriend") }) },
                 bottomBar = {
                     NavigationBar {
                         listOf("朋友", "日程", "设置").forEachIndexed { index, label ->
@@ -408,7 +411,19 @@ private fun ChatScreen(
 
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
-            title = { Text(friend.name) },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Avatar(friend.name, 34)
+                    Spacer(Modifier.width(10.dp))
+                    Column {
+                        Text(friend.name)
+                        Text(
+                            if (friend.presence) "在场" else "不在场",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+            },
             navigationIcon = { TextButton(onClick = onBack) { Text("返回") } },
         )
         Row(
@@ -439,7 +454,7 @@ private fun ChatScreen(
                 }
             }
             items(messages, key = { it.id }) { message ->
-                MessageRow(message, ttsReady, onRetry = { retry(message.id) }) {
+                MessageRow(message, friend.name, ttsReady, onRetry = { retry(message.id) }) {
                     speak(message.id, message.content)
                 }
             }
@@ -475,39 +490,65 @@ private fun startSpeech(recognizer: SpeechRecognizer) {
 @Composable
 private fun MessageRow(
     message: Message,
+    friendName: String,
     ttsReady: Boolean,
     onRetry: () -> Unit,
     onSpeak: () -> Unit,
 ) {
     val assistant = message.role == "assistant"
     val bubbles = message.content.split("<<<MSG>>>").map { it.trim() }.filter { it.isNotEmpty() }
-    Column(
+    Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = if (assistant) Alignment.Start else Alignment.End,
+        verticalAlignment = Alignment.Top,
     ) {
-        if (bubbles.isEmpty() && message.status == "streaming") {
-            Text("……", style = MaterialTheme.typography.bodyLarge)
+        if (assistant) {
+            Avatar(friendName, 28)
+            Spacer(Modifier.width(8.dp))
         }
-        bubbles.forEachIndexed { index, bubble ->
-            if (index > 0) Spacer(Modifier.height(4.dp))
-            Text(text = bubble, style = MaterialTheme.typography.bodyLarge)
-        }
-        sourceSummary(message.sourcesJson)?.let {
-            Text(it, style = MaterialTheme.typography.bodySmall)
-        }
-        toolSummary(message.toolCallsJson)?.let {
-            Text(it, style = MaterialTheme.typography.bodySmall)
-        }
-        if (assistant && message.content.isNotBlank() && ttsReady) {
-            TextButton(onClick = onSpeak, modifier = Modifier.height(28.dp)) {
-                Text("朗读", style = MaterialTheme.typography.labelSmall)
+        Column(
+            modifier = Modifier.weight(1f),
+            horizontalAlignment = if (assistant) Alignment.Start else Alignment.End,
+        ) {
+            if (bubbles.isEmpty() && message.status == "streaming") {
+                Text("……", style = MaterialTheme.typography.bodyLarge)
+            }
+            bubbles.forEachIndexed { index, bubble ->
+                if (index > 0) Spacer(Modifier.height(4.dp))
+                Text(text = bubble, style = MaterialTheme.typography.bodyLarge)
+            }
+            sourceSummary(message.sourcesJson)?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall)
+            }
+            toolSummary(message.toolCallsJson)?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall)
+            }
+            if (assistant && message.content.isNotBlank() && ttsReady) {
+                TextButton(onClick = onSpeak, modifier = Modifier.height(28.dp)) {
+                    Text("朗读", style = MaterialTheme.typography.labelSmall)
+                }
+            }
+            if (assistant && (message.status == "error" || message.status == "partial")) {
+                TextButton(onClick = onRetry, modifier = Modifier.height(28.dp)) {
+                    Text("重试", style = MaterialTheme.typography.labelSmall)
+                }
             }
         }
-        if (assistant && (message.status == "error" || message.status == "partial")) {
-            TextButton(onClick = onRetry, modifier = Modifier.height(28.dp)) {
-                Text("重试", style = MaterialTheme.typography.labelSmall)
-            }
-        }
+    }
+}
+
+@Composable
+private fun Avatar(name: String, size: Int) {
+    Box(
+        modifier = Modifier
+            .size(size.dp)
+            .background(MaterialTheme.colorScheme.secondaryContainer, CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            name.take(1),
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
+            fontSize = (size * 0.42).sp,
+        )
     }
 }
 
