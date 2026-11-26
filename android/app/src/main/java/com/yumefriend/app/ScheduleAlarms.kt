@@ -9,6 +9,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import java.time.LocalDate
@@ -52,7 +53,8 @@ object ScheduleAlarms {
     }
 
     fun notify(context: Context, scheduleId: String, title: String) {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
             PackageManager.PERMISSION_GRANTED
         ) return
         val open = PendingIntent.getActivity(
