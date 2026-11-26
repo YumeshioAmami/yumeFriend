@@ -36,7 +36,8 @@ object LegacyImport {
                         putIf("voice_id", row.string("voice_id"))
                         put("voice_reply_enabled", number(row.int("voice_reply_enabled") ?: 0))
                         put("presence", number(row.int("presence") ?: 1))
-                        put("visual_mode", text("none"))
+                        put("visual_mode", text("portrait"))
+                        put("visual_pack_id", text(YumeRepository.PORTRAIT_PACK_ID))
                         putIf("portrait_transform_json", row.string("portrait_transform"))
                         row.double("temperature")?.let { put("temperature", number(it)) }
                         put("life_enabled", number(0))

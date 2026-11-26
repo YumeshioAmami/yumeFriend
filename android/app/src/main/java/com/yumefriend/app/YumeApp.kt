@@ -34,6 +34,8 @@ class YumeApp : Application() {
         val database = openDatabase(File(filesDir, "yumefriend.db").absolutePath)
         val core = YumeCore(modules, database, deviceId, "yumeFriend")
         repository = YumeRepository(core)
+        repository.ensureBuiltInVisualPacks()
+        repository.normalizeFriendVisualDefaults()
         legacyDb?.let {
             runCatching { repository.importLegacy(this, it) }
                 .onSuccess { AppLog.record(this, "老版数据迁移完成") }

@@ -3,9 +3,13 @@
 package com.yumefriend.app
 
 import android.Manifest
+import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -50,15 +54,19 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -82,6 +90,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -620,51 +630,79 @@ private fun ChatScreen(
                                     }
                                 })
                             }
-                            .padding(horizontal = 10.dp, vertical = 7.dp),
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
                     ) {
-                        Text(if (speaking) "播放中" else "按住说话", fontSize = 12.sp)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                painterResource(R.drawable.ic_mic),
+                                contentDescription = "按住说话",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(if (speaking) "播放中" else "按住说话", fontSize = 12.sp)
+                        }
                     }
-                    Text(
-                        "挂断",
-                        color = MaterialTheme.colorScheme.primary,
-                        fontSize = 12.sp,
-                        modifier = Modifier.clickable { hangUp() }.padding(horizontal = 8.dp, vertical = 8.dp),
-                    )
-                } else {
-                    Text(
-                        "说",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 13.sp,
-                        modifier = Modifier.clickable { beginSpeech() }.padding(horizontal = 6.dp, vertical = 8.dp),
-                    )
-                    Text(
-                        "通话",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 13.sp,
-                        modifier = Modifier.clickable { inCall = true }.padding(horizontal = 6.dp, vertical = 8.dp),
-                    )
-                }
-            }
-            BasicTextField(
-                value = draft,
-                onValueChange = { draft = it },
-                modifier = Modifier.weight(1f).padding(vertical = 8.dp),
-                textStyle = MaterialTheme.typography.bodyMedium.copy(
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 14.sp,
-                ),
-                maxLines = 3,
-                decorationBox = { inner ->
-                    if (draft.isBlank()) {
-                        Text(
-                            "说点什么……",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 14.sp,
+                    IconButton(onClick = { hangUp() }, modifier = Modifier.size(36.dp)) {
+                        Icon(
+                            painterResource(R.drawable.ic_call),
+                            contentDescription = "挂断",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp),
                         )
                     }
-                    inner()
-                },
-            )
+                } else {
+                    IconButton(onClick = { beginSpeech() }, modifier = Modifier.size(36.dp)) {
+                        Icon(
+                            painterResource(R.drawable.ic_mic),
+                            contentDescription = "语音输入",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                    IconButton(onClick = { inCall = true }, modifier = Modifier.size(36.dp)) {
+                        Icon(
+                            painterResource(R.drawable.ic_call),
+                            contentDescription = "通话",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
+            }
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+                    .border(
+                        1.dp,
+                        MaterialTheme.colorScheme.outlineVariant,
+                        RoundedCornerShape(12.dp),
+                    )
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+            ) {
+                BasicTextField(
+                    value = draft,
+                    onValueChange = { draft = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = 14.sp,
+                    ),
+                    maxLines = 3,
+                    decorationBox = { inner ->
+                        if (draft.isBlank()) {
+                            Text(
+                                "说点什么……",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 14.sp,
+                            )
+                        }
+                        inner()
+                    },
+                )
+            }
             if (sending) {
                 Text(
                     "停止",
@@ -673,18 +711,22 @@ private fun ChatScreen(
                     modifier = Modifier.clickable { stop() }.padding(horizontal = 8.dp, vertical = 8.dp),
                 )
             } else {
-                Text(
-                    "发送",
-                    color = if (draft.isNotBlank()) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                    fontSize = 13.sp,
-                    modifier = Modifier
-                        .clickable(enabled = draft.isNotBlank()) { send() }
-                        .padding(horizontal = 8.dp, vertical = 8.dp),
-                )
+                IconButton(
+                    onClick = { send() },
+                    enabled = draft.isNotBlank(),
+                    modifier = Modifier.size(36.dp),
+                ) {
+                    Icon(
+                        painterResource(R.drawable.ic_send),
+                        contentDescription = "发送",
+                        tint = if (draft.isNotBlank()) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
             }
         }
     }
@@ -708,6 +750,8 @@ private fun ImmersiveScreen(
     onExit: () -> Unit,
 ) {
     val context = LocalContext.current
+    val activity = context as? Activity
+    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val scope = rememberCoroutineScope()
     var messages by remember { mutableStateOf(initialMessages) }
     var mode by remember { mutableStateOf("her") }
@@ -722,6 +766,10 @@ private fun ImmersiveScreen(
     val lastAssistant = messages.lastOrNull {
         it.role == "assistant" && it.status == "completed" && it.content.isNotBlank()
     }
+    val visualPack = remember(friend.id, friend.visualPackId) {
+        repository.visualPackById(friend.visualPackId ?: YumeRepository.PORTRAIT_PACK_ID)
+    }
+    val visualKind = if (friend.visualMode == "live2d") "live2d" else "portrait"
     val units = immersiveUnits(lastAssistant)
     val safeIndex = index.coerceIn(0, (units.size - 1).coerceAtLeast(0))
     val current = units.getOrNull(safeIndex).orEmpty()
@@ -744,6 +792,9 @@ private fun ImmersiveScreen(
             tts.stop()
             tts.shutdown()
         }
+    }
+    DisposableEffect(Unit) {
+        onDispose { activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
     }
     fun speak(messageId: String, text: String) {
         if (!features.voice || !ttsReady || text.isBlank()) return
@@ -801,28 +852,43 @@ private fun ImmersiveScreen(
         if (safeIndex < units.size - 1) index = safeIndex + 1 else mode = "me"
     }
 
-    val bitmap = remember(friend.avatarAssetId) {
-        friend.avatarAssetId?.let { AssetStore.file(context, it) }
-            ?.let { BitmapFactory.decodeFile(it.path) }
-    }
+    val currentMood = lastAssistant?.segments?.getOrNull(safeIndex)?.mood ?: "正常"
+    val portraitPath = visualPack?.images?.get(currentMood)
+        ?: visualPack?.images?.get("正常")
+        ?: visualPack?.previewPath.orEmpty()
+    val backgroundPath = if (visualKind == "live2d") visualPack?.previewPath.orEmpty() else portraitPath
+    val visualModifier = Modifier
+        .padding(bottom = if (landscape) 96.dp else 180.dp)
+        .fillMaxWidth(if (landscape) 0.55f else 0.82f)
+        .fillMaxHeight(if (landscape) 0.9f else 0.72f)
+    val live2dHeight = LocalConfiguration.current.screenHeightDp.dp * if (landscape) 0.82f else 0.62f
     Box(Modifier.fillMaxSize().background(Color(0xFF0D0D10))) {
-        if (bitmap != null) {
-            Image(
-                bitmap = bitmap.asImageBitmap(),
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize().alpha(0.18f).blur(24.dp),
-                contentScale = ContentScale.Crop,
+        if (backgroundPath.isNotBlank()) {
+            AssetImage(
+                backgroundPath,
+                Modifier.fillMaxSize().alpha(0.18f).blur(24.dp),
+                ContentScale.Crop,
             )
-            Image(
-                bitmap = bitmap.asImageBitmap(),
-                contentDescription = friend.name,
-                modifier = Modifier
+        }
+        if (visualKind == "live2d" && visualPack?.modelPath?.isNotBlank() == true) {
+            Live2DView(
+                visualPack.modelPath,
+                Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 180.dp)
-                    .fillMaxWidth(0.82f)
-                    .fillMaxHeight(0.72f)
+                    .fillMaxWidth(if (landscape) 0.55f else 0.82f)
+                    .height(live2dHeight),
+            )
+            Box(
+                Modifier.fillMaxSize().clickable(enabled = mode == "her") { advance() },
+            )
+        } else if (portraitPath.isNotBlank()) {
+            AssetImage(
+                portraitPath,
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .then(visualModifier)
                     .clickable(enabled = mode == "her") { advance() },
-                contentScale = ContentScale.Fit,
+                ContentScale.Fit,
             )
         } else {
             Text(
@@ -854,6 +920,24 @@ private fun ImmersiveScreen(
                 .clickable(onClick = onExit)
                 .padding(horizontal = 12.dp, vertical = 6.dp),
         )
+        Text(
+            if (landscape) "竖屏" else "横屏",
+            color = Color.White.copy(alpha = 0.7f),
+            fontSize = 12.sp,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .statusBarsPadding()
+                .padding(top = 16.dp, end = 116.dp)
+                .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(4.dp))
+                .clickable {
+                    activity?.requestedOrientation = if (landscape) {
+                        ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                    } else {
+                        ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                    }
+                }
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+        )
         Column(
             modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding(),
         ) {
@@ -862,7 +946,7 @@ private fun ImmersiveScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(Color(0x8C000000))
-                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                    .padding(horizontal = 24.dp, vertical = if (landscape) 10.dp else 16.dp),
             ) {
                 Text(
                     if (mode == "her") friend.name else "我",
@@ -1031,6 +1115,31 @@ private fun Avatar(name: String, assetId: String?, size: Int) {
     }
 }
 
+@Composable
+private fun AssetImage(
+    path: String,
+    modifier: Modifier = Modifier,
+    contentScale: ContentScale = ContentScale.Fit,
+) {
+    val context = LocalContext.current
+    val bitmap = remember(path) {
+        if (path.isBlank()) return@remember null
+        runCatching {
+            context.assets.open(path).use { BitmapFactory.decodeStream(it) }
+        }.getOrNull()
+    }
+    if (bitmap != null) {
+        Image(
+            bitmap = bitmap.asImageBitmap(),
+            contentDescription = null,
+            modifier = modifier,
+            contentScale = contentScale,
+        )
+    } else {
+        Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant))
+    }
+}
+
 private fun sourceSummary(raw: String): String? {
     if (raw.isBlank()) return null
     val items = runCatching { JSONArray(raw) }.getOrNull() ?: return null
@@ -1058,6 +1167,10 @@ private fun toolSummary(raw: String): String? {
         }
     }.getOrDefault(emptyList())
     return names.takeIf { it.isNotEmpty() }?.joinToString(prefix = "工具：", separator = "、")
+}
+
+private fun openUrl(context: android.content.Context, url: String) {
+    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
 }
 
 @Composable
@@ -1125,6 +1238,13 @@ private fun PersonaPanel(
     var personality by remember { mutableStateOf(friend.personality) }
     var instructions by remember { mutableStateOf(friend.customInstructions) }
     var avatarId by remember(friend.id) { mutableStateOf(friend.avatarAssetId) }
+    val visualPacks = remember(friend.id) { repository.visualPacks() }
+    var visualMode by remember(friend.id) {
+        mutableStateOf(if (friend.visualMode == "live2d") "live2d" else "portrait")
+    }
+    var visualPackId by remember(friend.id) {
+        mutableStateOf(friend.visualPackId ?: YumeRepository.PORTRAIT_PACK_ID)
+    }
     val voices = remember(friend.id) { repository.voices() }
     var voiceId by remember(friend.id) { mutableStateOf(friend.voiceId) }
     var voiceReplyEnabled by remember(friend.id) { mutableStateOf(friend.voiceReplyEnabled) }
@@ -1152,6 +1272,55 @@ private fun PersonaPanel(
         OutlinedTextField(personality, { personality = it }, Modifier.fillMaxWidth(), label = { Text("人格") }, minLines = 5)
         Spacer(Modifier.height(8.dp))
         OutlinedTextField(instructions, { instructions = it }, Modifier.fillMaxWidth(), label = { Text("补充要求") }, minLines = 3)
+        Spacer(Modifier.height(12.dp))
+        Text("呈现", style = MaterialTheme.typography.titleMedium)
+        visualPacks.forEach { pack ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        visualMode = pack.kind
+                        visualPackId = pack.id
+                        repository.updateFriendVisual(friend.id, pack.kind, pack.id)
+                        onSaved()
+                    }
+                    .padding(vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                AssetImage(
+                    pack.previewPath,
+                    Modifier
+                        .size(width = 54.dp, height = 72.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                )
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(pack.name)
+                    Text(
+                        if (pack.kind == "live2d") "Live2D" else "立绘",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                RadioButton(
+                    selected = visualPackId == pack.id,
+                    onClick = {
+                        visualMode = pack.kind
+                        visualPackId = pack.id
+                        repository.updateFriendVisual(friend.id, pack.kind, pack.id)
+                        onSaved()
+                    },
+                )
+            }
+        }
+        if (visualMode == "live2d" && !Live2DRuntime.available(context)) {
+            Text(
+                "需要先在设置下载 Live2D 运行库",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
         Spacer(Modifier.height(12.dp))
         if (voiceEnabled) {
             Text("声音", style = MaterialTheme.typography.titleMedium)
@@ -1404,6 +1573,11 @@ private fun SettingsScreen(
     var downloadProgress by remember { mutableStateOf(0) }
     var downloadedApk by remember { mutableStateOf<java.io.File?>(null) }
     var logs by remember { mutableStateOf(AppLog.read(context)) }
+    var live2dReady by remember { mutableStateOf(Live2DRuntime.available(context)) }
+    var live2dAccepted by remember { mutableStateOf(false) }
+    var live2dDownloading by remember { mutableStateOf(false) }
+    var live2dProgress by remember { mutableStateOf(0) }
+    var live2dState by remember { mutableStateOf("") }
     val voiceTts = remember { TextToSpeech(context) { status -> ttsReady = status == TextToSpeech.SUCCESS } }
     LaunchedEffect(ttsReady) {
         if (ttsReady) {
@@ -1462,6 +1636,47 @@ private fun SettingsScreen(
             TextButton(onClick = { onThemeChanged(theme.copy(mode = "light")) }) { Text("浅色") }
             TextButton(onClick = { onThemeChanged(theme.copy(mode = "dark")) }) { Text("深色") }
         }
+        HorizontalDivider()
+        Text("Live2D", style = MaterialTheme.typography.titleLarge)
+        Text(
+            if (live2dReady) "运行库已安装" else "运行库未安装，沉浸模式的 Live2D 不可用",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
+        TextButton(onClick = { openUrl(context, Live2DRuntime.PROPRIETARY_LICENSE_URL) }) {
+            Text("Live2D 专有软件许可协议")
+        }
+        TextButton(onClick = { openUrl(context, Live2DRuntime.OPEN_LICENSE_URL) }) {
+            Text("Live2D 开放软件许可协议")
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = live2dAccepted, onCheckedChange = { live2dAccepted = it })
+            Text("我已阅读并同意上述协议")
+        }
+        Button(
+            enabled = live2dAccepted && !live2dDownloading && !live2dReady,
+            onClick = {
+                scope.launch {
+                    live2dDownloading = true
+                    live2dState = "正在下载…"
+                    try {
+                        Live2DRuntime.download(context) { live2dProgress = it }
+                        live2dReady = true
+                        live2dState = "下载完成"
+                        AppLog.record(context, "Live2D Core 下载完成")
+                    } catch (error: Exception) {
+                        live2dState = error.message ?: "下载失败"
+                        AppLog.record(context, "Live2D Core 下载失败：${error.message}")
+                    } finally {
+                        live2dDownloading = false
+                    }
+                }
+            },
+        ) {
+            Text(if (live2dReady) "已安装" else "下载运行库")
+        }
+        if (live2dDownloading) Text("下载 $live2dProgress%")
+        if (live2dState.isNotBlank()) Text(live2dState, style = MaterialTheme.typography.bodySmall)
         if (features.voice) {
             HorizontalDivider()
             Text("语音", style = MaterialTheme.typography.titleLarge)

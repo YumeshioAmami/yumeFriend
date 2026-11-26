@@ -38,6 +38,8 @@ data class Friend(
     val presence: Boolean,
     val createdAt: String,
     val unreadCount: Int = 0,
+    val visualMode: String = "none",
+    val visualPackId: String? = null,
 )
 
 data class Message(
@@ -105,6 +107,20 @@ data class FeatureFlags(
     val knowledge: Boolean = true,
 )
 
+data class VisualPack(
+    val id: String,
+    val kind: String,
+    val name: String,
+    val previewPath: String,
+    val modelPath: String,
+    val images: Map<String, String>,
+)
+
+private val YUI_MOODS = listOf(
+    "担心", "调皮", "高兴", "害怕", "害羞", "慌张", "紧张", "惊讶", "平静", "认真",
+    "伤心", "生气", "无奈", "心动", "兴奋", "羞耻", "厌恶", "疑惑", "正常", "自信",
+)
+
 data class MessagePage(
     val items: List<Message>,
     val nextCursor: String?,
@@ -162,6 +178,8 @@ class YumeRepository(
         voiceReplyEnabled = item.int("voice_reply_enabled") == 1,
         presence = item.int("presence") == 1,
         createdAt = item.str("created_at"),
+        visualMode = item.str("visual_mode").ifBlank { "none" },
+        visualPackId = item.str("visual_pack_id").ifBlank { null },
     )
 
     fun friends(): List<Friend> {
@@ -192,8 +210,8 @@ class YumeRepository(
                 put("voice_id", JsonNull)
                 put("voice_reply_enabled", number(0))
                 put("presence", number(1))
-                put("visual_mode", text("none"))
-                put("visual_pack_id", JsonNull)
+                put("visual_mode", text("portrait"))
+                put("visual_pack_id", text(PORTRAIT_PACK_ID))
                 put("life_enabled", number(0))
             },
         )!!
@@ -228,6 +246,19 @@ class YumeRepository(
             buildJsonObject {
                 put("id", text(friendId))
                 put("avatar_asset_id", text(assetId))
+            },
+        )
+    }
+
+    fun updateFriendVisual(friendId: String, mode: String, packId: String) {
+        write(
+            "friend",
+            "friends",
+            WriteOp.UPDATE,
+            buildJsonObject {
+                put("id", text(friendId))
+                put("visual_mode", text(mode))
+                put("visual_pack_id", text(packId))
             },
         )
     }
@@ -804,6 +835,91 @@ class YumeRepository(
         return raw.removeSurrounding("\"") == "true"
     }
 
+    fun ensureBuiltInVisualPacks() {
+        val packs = listOf(
+            Triple(PORTRAIT_PACK_ID, "portrait", "YUI 立绘"),
+            Triple(LIVE2D_PACK_ID, "live2d", "YUI Live2D"),
+        )
+        packs.forEach { (id, kind, name) ->
+            val exists = read(
+                "visual",
+                "visual_packs",
+                mapOf("id" to text(id)),
+                1,
+            ).isNotEmpty()
+            if (exists) return@forEach
+            val manifest = if (kind == "portrait") {
+                buildJsonObject {
+                    put("preview_url", text("portraits/yui/正常.png"))
+                    put(
+                        "images",
+                        buildJsonObject {
+                            YUI_MOODS.forEach { mood ->
+                                put(mood, text("portraits/yui/$mood.png"))
+                            }
+                        },
+                    )
+                }
+            } else {
+                buildJsonObject {
+                    put("model_url", text("live2d/yui/yui-origin.model3.json"))
+                    put("preview_url", text("live2d/yui/preview.png"))
+                }
+            }
+            write(
+                "visual",
+                "visual_packs",
+                WriteOp.CREATE,
+                buildJsonObject {
+                    put("id", text(id))
+                    put("kind", text(kind))
+                    put("name", text(name))
+                    put("manifest_json", text(manifest.toString()))
+                },
+            )
+        }
+    }
+
+    fun visualPacks(): List<VisualPack> = read(
+        "visual",
+        "visual_packs",
+        limit = 100,
+    ).mapNotNull { item ->
+        val manifest = runCatching {
+            json.parseToJsonElement(item.str("manifest_json")) as JsonObject
+        }.getOrNull() ?: return@mapNotNull null
+        val images = (manifest["images"] as? JsonObject)
+            ?.mapValues { (_, value) -> value.jsonPrimitive.content }
+            .orEmpty()
+        VisualPack(
+            id = item.str("id"),
+            kind = item.str("kind"),
+            name = item.str("name"),
+            previewPath = manifest["preview_url"]?.jsonPrimitive?.content.orEmpty(),
+            modelPath = manifest["model_url"]?.jsonPrimitive?.content.orEmpty(),
+            images = images,
+        )
+    }
+
+    fun visualPackById(id: String?): VisualPack? = visualPacks().find { it.id == id }
+
+    fun normalizeFriendVisualDefaults() {
+        read("friend", "friends", limit = 500).forEach { item ->
+            if (item.str("visual_mode") == "none" || item.str("visual_pack_id").isBlank()) {
+                write(
+                    "friend",
+                    "friends",
+                    WriteOp.UPDATE,
+                    buildJsonObject {
+                        put("id", text(item.str("id")))
+                        put("visual_mode", text("portrait"))
+                        put("visual_pack_id", text(PORTRAIT_PACK_ID))
+                    },
+                )
+            }
+        }
+    }
+
     fun addVoice(name: String, engineVoice: String, locale: String): Voice {
         val id = UUID.randomUUID().toString()
         write(
@@ -1010,6 +1126,11 @@ class YumeRepository(
 
     fun stopMessage(messageId: String) {
         streamingDrafts[messageId]?.let { updateMessage(messageId, it, "partial") }
+    }
+
+    companion object {
+        const val PORTRAIT_PACK_ID = "builtin-yui-portrait"
+        const val LIVE2D_PACK_ID = "builtin-yui-live2d"
     }
 
     private fun now(): String = Instant.now().toString()
