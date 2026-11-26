@@ -796,6 +796,10 @@ private fun ImmersiveScreen(
             }
         }
     }
+    fun advance() {
+        if (mode != "her") return
+        if (safeIndex < units.size - 1) index = safeIndex + 1 else mode = "me"
+    }
 
     val bitmap = remember(friend.avatarAssetId) {
         friend.avatarAssetId?.let { AssetStore.file(context, it) }
@@ -816,7 +820,8 @@ private fun ImmersiveScreen(
                     .align(Alignment.BottomCenter)
                     .padding(bottom = 180.dp)
                     .fillMaxWidth(0.82f)
-                    .fillMaxHeight(0.72f),
+                    .fillMaxHeight(0.72f)
+                    .clickable(enabled = mode == "her") { advance() },
                 contentScale = ContentScale.Fit,
             )
         } else {
@@ -873,9 +878,7 @@ private fun ImmersiveScreen(
                         lineHeight = 29.sp,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable {
-                                if (safeIndex < units.size - 1) index = safeIndex + 1 else mode = "me"
-                            },
+                            .clickable { advance() },
                     )
                     Text(
                         when {
