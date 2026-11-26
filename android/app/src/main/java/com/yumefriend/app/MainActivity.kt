@@ -5,6 +5,7 @@ package com.yumefriend.app
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
@@ -47,6 +48,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -59,7 +61,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonPrimitive
@@ -67,6 +71,11 @@ import kotlinx.serialization.json.JsonPrimitive
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 10)
+        }
         val repository = (application as YumeApp).repository
         setContent { YumeRoot(repository) }
     }
@@ -182,6 +191,9 @@ private fun FriendsScreen(
                         )
                     }
                     TextButton(onClick = { deleteTarget = friend }) { Text("删除") }
+                    if (friend.unreadCount > 0) {
+                        Text("${friend.unreadCount}", color = MaterialTheme.colorScheme.primary)
+                    }
                 }
             }
         }
@@ -252,9 +264,13 @@ private fun ChatScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var messages by remember { mutableStateOf(repository.messages(friend.id)) }
+    var initialPage by remember { mutableStateOf(repository.messagePage(friend.id, null)) }
+    var messages by remember { mutableStateOf(initialPage.items) }
+    var nextCursor by remember { mutableStateOf(initialPage.nextCursor) }
     var draft by remember { mutableStateOf("") }
     var sending by remember { mutableStateOf(false) }
+    var streamingId by remember { mutableStateOf<String?>(null) }
+    var generationJob by remember { mutableStateOf<Job?>(null) }
     var panel by remember { mutableStateOf<ChatPanel?>(null) }
     var ttsReady by remember { mutableStateOf(false) }
     val tts = remember { TextToSpeech(context) { status -> ttsReady = status == TextToSpeech.SUCCESS } }
@@ -286,42 +302,79 @@ private fun ChatScreen(
             tts.shutdown()
         }
     }
+    LaunchedEffect(friend.id) {
+        repository.markRead(friend.id)
+    }
     fun beginSpeech() {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
             PackageManager.PERMISSION_GRANTED
         ) startSpeech(recognizer) else permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
     }
+    fun runReply(events: kotlinx.coroutines.flow.Flow<ChatEvent>) {
+        generationJob = scope.launch {
+            sending = true
+            var streamed = ""
+            try {
+                events.collect { event ->
+                    when (event) {
+                        is ChatEvent.Start -> {
+                            val page = repository.messagePage(friend.id, null)
+                            messages = page.items
+                            nextCursor = page.nextCursor
+                            streamingId = event.message.id
+                            streamed = ""
+                        }
+                        is ChatEvent.Delta -> {
+                            streamed += event.text
+                            val id = streamingId ?: return@collect
+                            messages = messages.map {
+                                if (it.id == id) it.copy(content = streamed, status = "streaming") else it
+                            }
+                        }
+                        is ChatEvent.End -> {
+                            messages = messages.map { if (it.id == event.message.id) event.message else it }
+                        }
+                        is ChatEvent.Error -> {
+                            messages = messages.map { if (it.id == event.message.id) event.message else it }
+                        }
+                    }
+                }
+                if (friend.voiceReplyEnabled && ttsReady) {
+                    tts.speak(messages.lastOrNull { it.role == "assistant" }?.content.orEmpty(), TextToSpeech.QUEUE_FLUSH, null, "reply")
+                }
+            } catch (_: CancellationException) {
+            } catch (error: Exception) {
+                streamingId?.let {
+                    repository.updateMessage(it, error.message.orEmpty(), "error")
+                }
+            } finally {
+                sending = false
+                streamingId = null
+                generationJob = null
+                messages = repository.messagePage(friend.id, null).items
+            }
+        }
+    }
     fun send() {
         val text = draft.trim()
         if (text.isBlank() || sending) return
         draft = ""
-        sending = true
-        scope.launch {
-            val user = repository.createMessage(friend.id, "user", text)
-            val assistant = repository.createMessage(friend.id, "assistant", "", "streaming")
-            messages = messages + user + assistant
-            try {
-                var content = ""
-                repository.generateReply(friend, text, assistant.id) { delta ->
-                    content += delta
-                    val next = content
-                    scope.launch {
-                        messages = messages.map {
-                            if (it.id == assistant.id) it.copy(content = next, status = "streaming") else it
-                        }
-                    }
-                }
-                messages = repository.messages(friend.id)
-                if (friend.voiceReplyEnabled && ttsReady) {
-                    tts.speak(messages.lastOrNull { it.role == "assistant" }?.content.orEmpty(), TextToSpeech.QUEUE_FLUSH, null, "reply")
-                }
-            } catch (error: Exception) {
-                repository.updateMessage(assistant.id, "生成失败：${error.message}", "error")
-                messages = repository.messages(friend.id)
-            } finally {
-                sending = false
-            }
-        }
+        runReply(repository.sendMessageStream(friend, text))
+    }
+    fun stop() {
+        streamingId?.let { repository.stopMessage(it) }
+        generationJob?.cancel()
+    }
+    fun loadEarlier() {
+        val cursor = nextCursor ?: return
+        val page = repository.messagePage(friend.id, cursor)
+        messages = page.items + messages
+        nextCursor = page.nextCursor
+    }
+    fun retry(assistantId: String) {
+        val index = messages.indexOfFirst { it.id == assistantId }
+        val user = messages.take(index).lastOrNull { it.role == "user" } ?: return
+        runReply(repository.retryMessage(user.id))
     }
 
     val currentPanel = panel
@@ -368,8 +421,13 @@ private fun ChatScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            if (nextCursor != null) {
+                item {
+                    TextButton(onClick = { loadEarlier() }) { Text("加载更早") }
+                }
+            }
             items(messages, key = { it.id }) { message ->
-                MessageRow(message, ttsReady) {
+                MessageRow(message, ttsReady, onRetry = { retry(message.id) }) {
                     if (ttsReady) tts.speak(message.content, TextToSpeech.QUEUE_FLUSH, null, message.id)
                 }
             }
@@ -387,9 +445,8 @@ private fun ChatScreen(
                 placeholder = { Text("说点什么…") },
                 maxLines = 3,
             )
-            TextButton(enabled = draft.isNotBlank() && !sending, onClick = { send() }) {
-                Text(if (sending) "生成中" else "发送")
-            }
+            if (sending) TextButton(onClick = { stop() }) { Text("停止") }
+            else TextButton(enabled = draft.isNotBlank(), onClick = { send() }) { Text("发送") }
         }
     }
 }
@@ -404,7 +461,12 @@ private fun startSpeech(recognizer: SpeechRecognizer) {
 }
 
 @Composable
-private fun MessageRow(message: Message, ttsReady: Boolean, onSpeak: () -> Unit) {
+private fun MessageRow(
+    message: Message,
+    ttsReady: Boolean,
+    onRetry: () -> Unit,
+    onSpeak: () -> Unit,
+) {
     val assistant = message.role == "assistant"
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -417,6 +479,11 @@ private fun MessageRow(message: Message, ttsReady: Boolean, onSpeak: () -> Unit)
         if (assistant && message.content.isNotBlank() && ttsReady) {
             TextButton(onClick = onSpeak, modifier = Modifier.height(28.dp)) {
                 Text("朗读", style = MaterialTheme.typography.labelSmall)
+            }
+        }
+        if (assistant && (message.status == "error" || message.status == "partial")) {
+            TextButton(onClick = onRetry, modifier = Modifier.height(28.dp)) {
+                Text("重试", style = MaterialTheme.typography.labelSmall)
             }
         }
     }
@@ -490,11 +557,19 @@ private fun PersonaPanel(repository: YumeRepository, friend: Friend, onSaved: ()
 
 @Composable
 private fun SchedulePanel(repository: YumeRepository, friendId: String) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var items by remember { mutableStateOf(repository.schedules(friendId)) }
     var title by remember { mutableStateOf("") }
     var date by remember { mutableStateOf("") }
     var time by remember { mutableStateOf("") }
+    var editing by remember { mutableStateOf<Schedule?>(null) }
+    fun reset() {
+        title = ""
+        date = ""
+        time = ""
+        editing = null
+    }
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(title, { title = it }, Modifier.weight(1f), label = { Text("日程") })
@@ -502,14 +577,20 @@ private fun SchedulePanel(repository: YumeRepository, friendId: String) {
                 enabled = title.isNotBlank() && date.isNotBlank(),
                 onClick = {
                     scope.launch {
-                        repository.createSchedule(friendId, title.trim(), date.trim(), time.trim())
-                        title = ""
-                        date = ""
-                        time = ""
+                        val current = editing
+                        val schedule = if (current == null) {
+                            repository.createSchedule(friendId, title.trim(), date.trim(), time.trim())
+                        } else {
+                            ScheduleAlarms.cancel(context, current.id)
+                            repository.updateSchedule(current, title.trim(), date.trim(), time.trim())
+                        }
+                        ScheduleAlarms.schedule(context, schedule)
+                        reset()
                         items = repository.schedules(friendId)
                     }
                 },
-            ) { Text("添加") }
+            ) { Text(if (editing == null) "添加" else "保存") }
+            if (editing != null) TextButton(onClick = { reset() }) { Text("取消") }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(date, { date = it }, Modifier.weight(1f), label = { Text("YYYY-MM-DD") })
@@ -523,14 +604,36 @@ private fun SchedulePanel(repository: YumeRepository, friendId: String) {
                             Text(schedule.title)
                             Text("${schedule.dateLocal} ${schedule.timeLocal}", style = MaterialTheme.typography.bodySmall)
                         }
+                        TextButton(onClick = {
+                            editing = schedule
+                            title = schedule.title
+                            date = schedule.dateLocal
+                            time = schedule.timeLocal
+                        }) { Text("改") }
                         if (schedule.state != "settled") {
                             TextButton(onClick = {
                                 scope.launch {
+                                    ScheduleAlarms.cancel(context, schedule.id)
                                     repository.settleSchedule(schedule, "done")
                                     items = repository.schedules(friendId)
                                 }
                             }) { Text("完成") }
+                            TextButton(onClick = {
+                                scope.launch {
+                                    ScheduleAlarms.cancel(context, schedule.id)
+                                    repository.settleSchedule(schedule, "放弃")
+                                    items = repository.schedules(friendId)
+                                }
+                            }) { Text("放弃") }
                         }
+                        TextButton(onClick = {
+                            scope.launch {
+                                ScheduleAlarms.cancel(context, schedule.id)
+                                repository.deleteSchedule(schedule)
+                                if (editing?.id == schedule.id) reset()
+                                items = repository.schedules(friendId)
+                            }
+                        }) { Text("删") }
                     }
                 }
             }

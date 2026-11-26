@@ -4,6 +4,9 @@ import android.app.Application
 import com.yume.core.YumeCore
 import com.yume.core.manifest.ManifestLoader
 import com.yume.core.storage.openDatabase
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.io.File
 import java.util.UUID
 
@@ -27,5 +30,7 @@ class YumeApp : Application() {
         val database = openDatabase(File(filesDir, "yumefriend.db").absolutePath)
         val core = YumeCore(modules, database, deviceId, "yumeFriend")
         repository = YumeRepository(core)
+        ScheduleAlarms.ensureChannel(this)
+        CoroutineScope(Dispatchers.IO).launch { ScheduleAlarms.refresh(this@YumeApp) }
     }
 }

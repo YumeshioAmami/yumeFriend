@@ -1,6 +1,8 @@
 package com.yumefriend.app
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -22,8 +24,10 @@ class OpenAiClient {
     ): String = withContext(Dispatchers.IO) {
         val connection = request(config, messages, temperature, stream = true)
         val result = StringBuilder()
-        connection.inputStream.bufferedReader().useLines { lines ->
-            for (line in lines) {
+        connection.inputStream.bufferedReader().use { reader ->
+            while (true) {
+                currentCoroutineContext().ensureActive()
+                val line = reader.readLine() ?: break
                 if (!line.startsWith("data:")) continue
                 val data = line.removePrefix("data:").trim()
                 if (data == "[DONE]") break

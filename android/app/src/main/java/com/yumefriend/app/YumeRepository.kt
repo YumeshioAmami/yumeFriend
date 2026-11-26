@@ -4,6 +4,11 @@ import com.yume.core.ReadRequest
 import com.yume.core.WriteOp
 import com.yume.core.WriteRequest
 import com.yume.core.YumeCore
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -28,6 +33,7 @@ data class Friend(
     val voiceReplyEnabled: Boolean,
     val presence: Boolean,
     val createdAt: String,
+    val unreadCount: Int = 0,
 )
 
 data class Message(
@@ -71,6 +77,18 @@ data class DocumentHit(
     val documentId: String,
     val text: String,
 )
+
+data class MessagePage(
+    val items: List<Message>,
+    val nextCursor: String?,
+)
+
+sealed interface ChatEvent {
+    data class Start(val message: Message) : ChatEvent
+    data class Delta(val text: String) : ChatEvent
+    data class End(val message: Message) : ChatEvent
+    data class Error(val message: Message) : ChatEvent
+}
 
 class YumeRepository(
     private val core: YumeCore,
@@ -119,9 +137,18 @@ class YumeRepository(
         createdAt = item.str("created_at"),
     )
 
-    fun friends(): List<Friend> = read("friend", "friends", limit = 500)
-        .sortedBy { it.str("created_at") }
-        .map { Friend("", "", "", "", null, null, false, true, "").fromJson(it) }
+    fun friends(): List<Friend> {
+        val unread = read("chat", "messages", limit = 1_000_000)
+            .filter { it.str("role") != "user" && it.str("read_at").isBlank() }
+            .groupingBy { it.str("friend_id") }
+            .eachCount()
+        return read("friend", "friends", limit = 500)
+            .sortedBy { it.str("created_at") }
+            .map {
+                Friend("", "", "", "", null, null, false, true, "").fromJson(it)
+                    .copy(unreadCount = unread[it.str("id")] ?: 0)
+            }
+    }
 
     suspend fun createFriend(name: String, personality: String, instructions: String): Friend {
         val id = UUID.randomUUID().toString()
@@ -196,13 +223,12 @@ class YumeRepository(
         write("friend", "friends", WriteOp.DELETE, buildJsonObject { put("id", text(friend.id)) })
     }
 
-    fun messages(friendId: String): List<Message> = read(
+    private fun allMessages(friendId: String): List<Message> = read(
         "chat",
         "messages",
         mapOf("friend_id" to text(friendId)),
-        10000,
+        1_000_000,
     ).sortedBy { it.str("created_at") }
-        .takeLast(200)
         .map {
             Message(
                 id = it.str("id"),
@@ -213,6 +239,37 @@ class YumeRepository(
                 createdAt = it.str("created_at"),
             )
         }
+
+    fun messages(friendId: String): List<Message> = allMessages(friendId).takeLast(200)
+
+    fun messagePage(friendId: String, cursor: String?): MessagePage {
+        val all = allMessages(friendId)
+        val end = cursor?.let { id -> all.indexOfFirst { it.id == id }.takeIf { it >= 0 } } ?: all.size
+        val start = (end - 200).coerceAtLeast(0)
+        return MessagePage(all.subList(start, end), if (start > 0) all[start].id else null)
+    }
+
+    fun markRead(friendId: String) {
+        read(
+            "chat",
+            "messages",
+            mapOf(
+                "friend_id" to text(friendId),
+                "read_at" to JsonNull,
+            ),
+            1_000_000,
+        ).filter { it.str("role") != "user" }.forEach {
+            write(
+                "chat",
+                "messages",
+                WriteOp.UPDATE,
+                buildJsonObject {
+                    put("id", text(it.str("id")))
+                    put("read_at", text(now()))
+                },
+            )
+        }
+    }
 
     fun createMessage(
         friendId: String,
@@ -335,9 +392,9 @@ class YumeRepository(
             )
         }
 
-    fun createSchedule(friendId: String, title: String, date: String, time: String) {
+    fun createSchedule(friendId: String, title: String, date: String, time: String): Schedule {
         val id = UUID.randomUUID().toString()
-        write(
+        val record = write(
             "schedule",
             "schedules",
             WriteOp.CREATE,
@@ -353,11 +410,22 @@ class YumeRepository(
                 put("owner", text("user"))
                 put("source", text("ui"))
             },
+        )!!
+        scheduleEvent(friendId, id, "create", null, record)
+        return Schedule(
+            id,
+            friendId,
+            title,
+            date,
+            time,
+            record.int("advance_minutes"),
+            record.str("state"),
         )
     }
 
     fun settleSchedule(schedule: Schedule, reason: String) {
-        write(
+        val before = scheduleRecord(schedule.id)
+        val after = write(
             "schedule",
             "schedules",
             WriteOp.UPDATE,
@@ -366,6 +434,116 @@ class YumeRepository(
                 put("state", text("settled"))
                 put("settled_at", text(now()))
                 put("settled_reason", text(reason))
+            },
+        )
+        scheduleEvent(schedule.friendId, schedule.id, "settle", before, after)
+    }
+
+    fun updateSchedule(
+        schedule: Schedule,
+        title: String,
+        date: String,
+        time: String,
+    ): Schedule {
+        val before = scheduleRecord(schedule.id)
+        val after = write(
+            "schedule",
+            "schedules",
+            WriteOp.UPDATE,
+            buildJsonObject {
+                put("id", text(schedule.id))
+                put("title", text(title))
+                put("date_local", text(date))
+                put("time_local", if (time.isBlank()) JsonNull else text(time))
+            },
+        )
+        scheduleEvent(schedule.friendId, schedule.id, "update", before, after)
+        return Schedule(
+            schedule.id,
+            schedule.friendId,
+            title,
+            date,
+            time,
+            schedule.advanceMinutes,
+            schedule.state,
+        )
+    }
+
+    fun deleteSchedule(schedule: Schedule) {
+        val before = scheduleRecord(schedule.id)
+        write("schedule", "schedules", WriteOp.DELETE, buildJsonObject { put("id", text(schedule.id)) })
+        scheduleEvent(schedule.friendId, schedule.id, "delete", before, null)
+    }
+
+    fun pendingSchedules(): List<Schedule> = read(
+        "schedule",
+        "schedules",
+        emptyMap(),
+        1_000_000,
+    ).mapNotNull(::toSchedule)
+
+    fun scheduleById(id: String): Schedule? = scheduleRecord(id)?.let(::toSchedule)
+
+    fun remindSchedule(id: String): String? {
+        val record = scheduleRecord(id) ?: return null
+        val schedule = toSchedule(record) ?: return null
+        if (schedule.state !in setOf("pending", "active") || schedule.timeLocal.isBlank()) return null
+        val reminded = read(
+            "schedule",
+            "schedule_events",
+            mapOf("schedule_id" to text(id)),
+        ).any { it.str("action") == "remind" }
+        if (reminded) return null
+        createMessage(
+            schedule.friendId,
+            "system",
+            "日程提醒：${schedule.title}",
+        )
+        scheduleEvent(schedule.friendId, schedule.id, "remind", null, record, actor = "system")
+        return schedule.title
+    }
+
+    private fun scheduleRecord(id: String): JsonObject? = read(
+        "schedule",
+        "schedules",
+        mapOf("id" to text(id)),
+        1,
+    ).firstOrNull()
+
+    private fun toSchedule(it: JsonObject): Schedule? {
+        val id = it.str("id")
+        if (id.isBlank()) return null
+        return Schedule(
+            id,
+            it.str("friend_id"),
+            it.str("title"),
+            it.str("date_local"),
+            it.str("time_local"),
+            it.int("advance_minutes"),
+            it.str("state"),
+        )
+    }
+
+    private fun scheduleEvent(
+        friendId: String,
+        scheduleId: String,
+        action: String,
+        before: JsonObject?,
+        after: JsonObject?,
+        actor: String = "user",
+    ) {
+        write(
+            "schedule",
+            "schedule_events",
+            WriteOp.CREATE,
+            buildJsonObject {
+                put("id", text(UUID.randomUUID().toString()))
+                put("friend_id", text(friendId))
+                put("schedule_id", text(scheduleId))
+                put("actor", text(actor))
+                put("action", text(action))
+                put("before_json", before?.let { text(it.toString()) } ?: JsonNull)
+                put("after_json", after?.let { text(it.toString()) } ?: JsonNull)
             },
         )
     }
@@ -492,28 +670,89 @@ class YumeRepository(
         )
     }
 
-    suspend fun generateReply(
+    private suspend fun streamReply(
         friend: Friend,
-        userText: String,
         assistantId: String,
+        emit: suspend (ChatEvent) -> Unit,
         onDelta: (String) -> Unit,
-    ): String {
-        val config = llmConfig() ?: error("请先在设置里填写模型")
-        val memoryText = memories(friend.id).take(20).joinToString("\n") { "- ${it.content}" }
-        val history = messages(friend.id)
-            .filter { it.id != assistantId && it.content.isNotBlank() }
-            .takeLast(20)
-        val messages = mutableListOf<Pair<String, String>>()
-        messages += "system" to buildString {
-            append("你是「${friend.name}」。\n")
-            append(friend.personality)
-            if (friend.customInstructions.isNotBlank()) append("\n${friend.customInstructions}")
-            if (memoryText.isNotBlank()) append("\n\n你记得：\n$memoryText")
+    ) {
+        try {
+            val config = llmConfig() ?: error("请先在设置里填写模型")
+            val memoryText = memories(friend.id).take(20).joinToString("\n") { "- ${it.content}" }
+            val history = messages(friend.id)
+                .filter { it.id != assistantId && it.content.isNotBlank() }
+                .takeLast(20)
+            val messages = mutableListOf<Pair<String, String>>()
+            messages += "system" to buildString {
+                append("你是「${friend.name}」。\n")
+                append(friend.personality)
+                if (friend.customInstructions.isNotBlank()) append("\n${friend.customInstructions}")
+                if (memoryText.isNotBlank()) append("\n\n你记得：\n$memoryText")
+            }
+            history.forEach { messages += it.role to it.content }
+            val reply = openAi.streamChat(config, messages, onDelta = onDelta)
+            updateMessage(assistantId, reply, "completed")
+            emit(ChatEvent.End(messageById(assistantId)!!))
+        } catch (error: CancellationException) {
+            withContext(NonCancellable) {
+                streamingDrafts[assistantId]?.let { updateMessage(assistantId, it, "partial") }
+            }
+            throw error
+        } catch (error: Exception) {
+            updateMessage(assistantId, error.message.orEmpty(), "error")
+            emit(ChatEvent.Error(messageById(assistantId)!!))
+        } finally {
+            streamingDrafts.remove(assistantId)
         }
-        history.forEach { messages += it.role to it.content }
-        val reply = openAi.streamChat(config, messages, onDelta = onDelta)
-        updateMessage(assistantId, reply, "completed")
-        return reply
+    }
+
+    private val streamingDrafts = mutableMapOf<String, String>()
+
+    fun sendMessageStream(friend: Friend, text: String): Flow<ChatEvent> = flow {
+        createMessage(friend.id, "user", text)
+        val assistant = createMessage(friend.id, "assistant", "", "streaming")
+        streamingDrafts[assistant.id] = ""
+        emit(ChatEvent.Start(assistant))
+        var content = ""
+        streamReply(friend, assistant.id, emit = { emit(it) }) { delta ->
+            content += delta
+            streamingDrafts[assistant.id] = content
+        }
+        return@flow
+    }
+
+    fun retryMessage(messageId: String): Flow<ChatEvent> = flow {
+        val user = messageById(messageId) ?: error("消息不存在")
+        val friend = friends().find { it.id == user.friendId } ?: error("朋友不存在")
+        val assistant = createMessage(friend.id, "assistant", "", "streaming")
+        streamingDrafts[assistant.id] = ""
+        emit(ChatEvent.Start(assistant))
+        var content = ""
+        streamReply(friend, assistant.id, emit = { emit(it) }) { delta ->
+            content += delta
+            streamingDrafts[assistant.id] = content
+        }
+        return@flow
+    }
+
+    fun messageById(id: String): Message? = read(
+        "chat",
+        "messages",
+        mapOf("id" to text(id)),
+        1,
+    ).firstOrNull()?.let {
+        Message(
+            it.str("id"),
+            it.str("friend_id"),
+            it.str("role"),
+            it.str("content"),
+            it.str("status"),
+            it.str("created_at"),
+        )
+    }
+
+    fun stopMessage(messageId: String) {
+        streamingDrafts[messageId]?.let { updateMessage(messageId, it, "partial") }
     }
 
     private fun now(): String = Instant.now().toString()
