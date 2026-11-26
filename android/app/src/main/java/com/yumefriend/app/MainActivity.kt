@@ -686,15 +686,20 @@ private fun KnowledgePanel(repository: YumeRepository, friendId: String) {
     var documents by remember { mutableStateOf(repository.documents(friendId)) }
     var query by remember { mutableStateOf("") }
     var hits by remember { mutableStateOf<List<DocumentHit>>(emptyList()) }
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+    var importError by remember { mutableStateOf("") }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
-            val text = withContext(Dispatchers.IO) {
-                context.contentResolver.openInputStream(uri)?.bufferedReader()?.readText().orEmpty()
+            val name = uri.lastPathSegment ?: "文档"
+            val (kind, text) = withContext(Dispatchers.IO) {
+                DocumentText.read(context, uri, name)
             }
             if (text.isNotBlank()) {
-                repository.importDocument(friendId, uri.lastPathSegment ?: "文档", "txt", text)
+                repository.importDocument(friendId, name, kind, text)
                 documents = repository.documents(friendId)
+                importError = ""
+            } else {
+                importError = "无法从文件中提取文本"
             }
         }
     }
@@ -703,7 +708,16 @@ private fun KnowledgePanel(repository: YumeRepository, friendId: String) {
             OutlinedTextField(query, { query = it }, Modifier.weight(1f), label = { Text("搜索知识") })
             TextButton(onClick = { hits = repository.searchDocuments(friendId, query) }) { Text("搜索") }
         }
-        TextButton(onClick = { picker.launch("text/*") }) { Text("导入文本") }
+        TextButton(onClick = {
+            picker.launch(
+                arrayOf(
+                    "text/*",
+                    "application/pdf",
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                ),
+            )
+        }) { Text("导入文档") }
+        if (importError.isNotBlank()) Text(importError, style = MaterialTheme.typography.bodySmall)
         if (hits.isNotEmpty()) {
             Text("搜索结果", style = MaterialTheme.typography.titleSmall)
             hits.forEach { Text(it.text.take(180), style = MaterialTheme.typography.bodySmall) }

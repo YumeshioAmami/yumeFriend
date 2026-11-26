@@ -586,8 +586,10 @@ class YumeRepository(
                 put("status", text("ready"))
             },
         )
-        val chunks = content.chunked(800)
-        chunks.forEachIndexed { index, chunk ->
+        var start = 0
+        var index = 0
+        while (start < content.length) {
+            val end = (start + 800).coerceAtMost(content.length)
             write(
                 "document",
                 "document_chunks",
@@ -596,9 +598,12 @@ class YumeRepository(
                     put("document_id", text(documentId))
                     put("friend_id", text(friendId))
                     put("seq", number(index))
-                    put("text", text(chunk))
+                    put("text", text(content.substring(start, end)))
                 },
             )
+            if (end == content.length) break
+            start = end - 100
+            index += 1
         }
     }
 

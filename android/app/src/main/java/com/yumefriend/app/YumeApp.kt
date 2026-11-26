@@ -4,6 +4,7 @@ import android.app.Application
 import com.yume.core.YumeCore
 import com.yume.core.manifest.ManifestLoader
 import com.yume.core.storage.openDatabase
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -16,6 +17,7 @@ class YumeApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        PDFBoxResourceLoader.init(this)
         val modules = assets.list("")
             .orEmpty()
             .filter { it.endsWith(".json") }
