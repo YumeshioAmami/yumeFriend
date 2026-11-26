@@ -35,10 +35,15 @@ class YumeApp : Application() {
         val core = YumeCore(modules, database, deviceId, "yumeFriend")
         repository = YumeRepository(core)
         legacyDb?.let {
-            runCatching { repository.importLegacy(it) }
-                .onFailure { error -> Log.e("YumeApp", "老版数据迁移失败", error) }
+            runCatching { repository.importLegacy(this, it) }
+                .onSuccess { AppLog.record(this, "老版数据迁移完成") }
+                .onFailure { error ->
+                    Log.e("YumeApp", "老版数据迁移失败", error)
+                    AppLog.record(this, "老版数据迁移失败：${error.message}")
+                }
         }
         ScheduleAlarms.ensureChannel(this)
+        AppLog.record(this, "应用启动")
         CoroutineScope(Dispatchers.IO).launch { ScheduleAlarms.refresh(this@YumeApp) }
     }
 }

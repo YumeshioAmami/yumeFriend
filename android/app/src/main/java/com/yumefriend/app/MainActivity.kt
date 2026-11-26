@@ -5,18 +5,24 @@ package com.yumefriend.app
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -60,6 +66,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -98,13 +108,22 @@ private enum class ChatPanel {
 @Composable
 private fun YumeRoot(repository: YumeRepository) {
     var theme by remember { mutableStateOf(repository.loadTheme()) }
+    var features by remember { mutableStateOf(repository.features()) }
     var friends by remember { mutableStateOf(repository.friends()) }
     var chatFriend by remember { mutableStateOf<Friend?>(null) }
-    var tab by remember { mutableStateOf(0) }
+    var tab by remember { mutableStateOf("friends") }
+    val tabs = buildList {
+        add("friends" to "朋友")
+        if (features.schedule) add("schedule" to "日程")
+        add("settings" to "设置")
+    }
 
     fun reload() {
         friends = repository.friends()
         chatFriend = friends.find { it.id == chatFriend?.id }
+    }
+    LaunchedEffect(features.schedule) {
+        if (tab == "schedule" && !features.schedule) tab = "friends"
     }
 
     MaterialTheme(colorScheme = theme.scheme()) {
@@ -112,6 +131,7 @@ private fun YumeRoot(repository: YumeRepository) {
             ChatScreen(
                 repository = repository,
                 friend = chatFriend!!,
+                features = features,
                 onBack = { chatFriend = null; reload() },
                 onFriendUpdated = { reload() },
             )
@@ -119,10 +139,10 @@ private fun YumeRoot(repository: YumeRepository) {
             Scaffold(
                 bottomBar = {
                     NavigationBar {
-                        listOf("朋友", "日程", "设置").forEachIndexed { index, label ->
+                        tabs.forEach { (key, label) ->
                             NavigationBarItem(
-                                selected = tab == index,
-                                onClick = { tab = index },
+                                selected = tab == key,
+                                onClick = { tab = key },
                                 icon = { Text(label.take(1)) },
                                 label = { Text(label) },
                             )
@@ -132,17 +152,23 @@ private fun YumeRoot(repository: YumeRepository) {
             ) { padding ->
                 Box(Modifier.padding(padding)) {
                     when (tab) {
-                        0 -> FriendsScreen(
+                        "friends" -> FriendsScreen(
                             repository = repository,
                             friends = friends,
                             onOpen = { chatFriend = it },
                             onChanged = { friends = repository.friends() },
                         )
-                        1 -> ScheduleTab(repository, friends)
-                        else -> SettingsScreen(repository, theme) {
-                            theme = it
-                            repository.saveTheme(it)
-                        }
+                        "schedule" -> ScheduleTab(repository, friends)
+                        else -> SettingsScreen(
+                            repository = repository,
+                            theme = theme,
+                            features = features,
+                            onThemeChanged = {
+                                theme = it
+                                repository.saveTheme(it)
+                            },
+                            onFeaturesChanged = { features = it },
+                        )
                     }
                 }
             }
@@ -186,7 +212,8 @@ private fun FriendsScreen(
                     modifier = Modifier.padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(friend.name.take(1), style = MaterialTheme.typography.titleLarge, modifier = Modifier.width(38.dp))
+                    Avatar(friend.name, friend.avatarAssetId, 38)
+                    Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
                         Text(friend.name, fontWeight = FontWeight.Medium)
                         Text(
@@ -265,6 +292,7 @@ private fun FriendDialog(
 private fun ChatScreen(
     repository: YumeRepository,
     friend: Friend,
+    features: FeatureFlags,
     onBack: () -> Unit,
     onFriendUpdated: () -> Unit,
 ) {
@@ -279,13 +307,20 @@ private fun ChatScreen(
     var generationJob by remember { mutableStateOf<Job?>(null) }
     var panel by remember { mutableStateOf<ChatPanel?>(null) }
     var ttsReady by remember { mutableStateOf(false) }
+    var speaking by remember { mutableStateOf(false) }
+    var inCall by remember { mutableStateOf(false) }
+    var recognizedText by remember { mutableStateOf<String?>(null) }
+    val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val tts = remember { TextToSpeech(context) { status -> ttsReady = status == TextToSpeech.SUCCESS } }
     val recognizer = remember {
         SpeechRecognizer.createSpeechRecognizer(context).apply {
             setRecognitionListener(object : RecognitionListener {
                 override fun onResults(results: Bundle?) {
                     val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
-                    if (!text.isNullOrBlank()) draft = text
+                    if (!text.isNullOrBlank()) {
+                        draft = text
+                        recognizedText = text
+                    }
                 }
                 override fun onError(error: Int) = Unit
                 override fun onReadyForSpeech(params: Bundle?) = Unit
@@ -301,7 +336,20 @@ private fun ChatScreen(
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) startSpeech(recognizer)
     }
-    DisposableEffect(Unit) {
+    DisposableEffect(tts) {
+        tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            override fun onStart(utteranceId: String?) {
+                mainHandler.post { speaking = true }
+            }
+
+            override fun onDone(utteranceId: String?) {
+                mainHandler.post { speaking = false }
+            }
+
+            override fun onError(utteranceId: String?) {
+                mainHandler.post { speaking = false }
+            }
+        })
         onDispose {
             recognizer.destroy()
             tts.stop()
@@ -312,16 +360,27 @@ private fun ChatScreen(
         repository.markRead(friend.id)
     }
     fun beginSpeech() {
+        if (sending || speaking) return
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
             PackageManager.PERMISSION_GRANTED
         ) startSpeech(recognizer) else permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
     }
     fun speak(messageId: String, text: String) {
-        if (!ttsReady || text.isBlank()) return
+        if (!features.voice || !ttsReady || text.isBlank()) return
+        val bubbles = text.split("<<<MSG>>>").map { it.trim() }.filter { it.isNotEmpty() }
+        if (bubbles.isEmpty()) return
         repository.voiceById(friend.voiceId.orEmpty())?.engineVoice
             ?.let { engineName -> tts.voices?.find { it.name == engineName } }
             ?.let { tts.voice = it }
-        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, messageId)
+        tts.stop()
+        bubbles.forEachIndexed { index, bubble ->
+            tts.speak(
+                bubble,
+                if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD,
+                null,
+                "$messageId-$index",
+            )
+        }
     }
     fun runReply(events: kotlinx.coroutines.flow.Flow<ChatEvent>) {
         generationJob = scope.launch {
@@ -352,13 +411,14 @@ private fun ChatScreen(
                         }
                     }
                 }
-                if (friend.voiceReplyEnabled && ttsReady) {
+                if (features.voice && (friend.voiceReplyEnabled || inCall) && ttsReady) {
                     messages.lastOrNull { it.role == "assistant" }?.let {
                         speak(it.id, it.content)
                     }
                 }
             } catch (_: CancellationException) {
             } catch (error: Exception) {
+                AppLog.record(context, "生成失败：${error.message}")
                 streamingId?.let {
                     repository.updateMessage(it, error.message.orEmpty(), "error")
                 }
@@ -374,9 +434,28 @@ private fun ChatScreen(
         val text = draft.trim()
         if (text.isBlank() || sending) return
         draft = ""
+        AppLog.record(context, "发送消息：${friend.name}")
         runReply(repository.sendMessageStream(friend, text))
     }
+    fun sendText(text: String) {
+        if (text.isBlank() || sending) return
+        draft = ""
+        AppLog.record(context, "通话发送：${friend.name}")
+        runReply(repository.sendMessageStream(friend, text))
+    }
+    fun hangUp() {
+        inCall = false
+        recognizer.cancel()
+        tts.stop()
+        speaking = false
+    }
+    LaunchedEffect(recognizedText, inCall) {
+        val text = recognizedText ?: return@LaunchedEffect
+        recognizedText = null
+        if (inCall) sendText(text)
+    }
     fun stop() {
+        AppLog.record(context, "停止生成：${friend.name}")
         streamingId?.let { repository.stopMessage(it) }
         generationJob?.cancel()
     }
@@ -401,7 +480,7 @@ private fun ChatScreen(
             )
             when (currentPanel) {
                 ChatPanel.MEMORY -> MemoryPanel(repository, friend.id)
-                ChatPanel.PERSONA -> PersonaPanel(repository, friend, onFriendUpdated)
+                ChatPanel.PERSONA -> PersonaPanel(repository, friend, features.voice, onFriendUpdated)
                 ChatPanel.SCHEDULE -> SchedulePanel(repository, friend.id)
                 ChatPanel.KNOWLEDGE -> KnowledgePanel(repository, friend.id)
             }
@@ -413,7 +492,7 @@ private fun ChatScreen(
         TopAppBar(
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Avatar(friend.name, 34)
+                    Avatar(friend.name, friend.avatarAssetId, 34)
                     Spacer(Modifier.width(10.dp))
                     Column {
                         Text(friend.name)
@@ -430,18 +509,26 @@ private fun ChatScreen(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            listOf(
-                "记忆" to ChatPanel.MEMORY,
-                "人格" to ChatPanel.PERSONA,
-                "日程" to ChatPanel.SCHEDULE,
-                "知识" to ChatPanel.KNOWLEDGE,
-            ).forEach { (label, target) ->
+            buildList {
+                if (features.memory) add("记忆" to ChatPanel.MEMORY)
+                add("人格" to ChatPanel.PERSONA)
+                if (features.schedule) add("日程" to ChatPanel.SCHEDULE)
+                if (features.knowledge) add("知识" to ChatPanel.KNOWLEDGE)
+            }.forEach { (label, target) ->
                 TextButton(onClick = { panel = target }) { Text(label) }
             }
-            TextButton(onClick = {
-                val text = messages.lastOrNull { it.role == "assistant" }?.content.orEmpty()
-                if (text.isNotBlank()) speak("reply", text)
-            }) { Text("语音") }
+            if (features.voice) {
+                TextButton(onClick = {
+                    val text = messages.lastOrNull { it.role == "assistant" }?.content.orEmpty()
+                    if (text.isNotBlank()) speak("reply", text)
+                }) { Text(if (speaking) "重播" else "语音") }
+                if (speaking) {
+                    TextButton(onClick = {
+                        tts.stop()
+                        speaking = false
+                    }) { Text("停止") }
+                }
+            }
         }
         LazyColumn(
             modifier = Modifier.weight(1f),
@@ -454,7 +541,14 @@ private fun ChatScreen(
                 }
             }
             items(messages, key = { it.id }) { message ->
-                MessageRow(message, friend.name, ttsReady, onRetry = { retry(message.id) }) {
+                MessageRow(
+                    message,
+                    friend.name,
+                    friend.avatarAssetId,
+                    features.voice,
+                    ttsReady,
+                    onRetry = { retry(message.id) },
+                ) {
                     speak(message.id, message.content)
                 }
             }
@@ -464,7 +558,31 @@ private fun ChatScreen(
             modifier = Modifier.fillMaxWidth().padding(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            TextButton(onClick = { beginSpeech() }) { Text("说") }
+            if (features.voice) {
+                if (inCall) {
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primaryContainer)
+                            .pointerInput(sending, speaking, inCall) {
+                                detectTapGestures(onPress = {
+                                    if (!sending && !speaking) {
+                                        beginSpeech()
+                                        tryAwaitRelease()
+                                        recognizer.stopListening()
+                                    }
+                                })
+                            }
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    ) {
+                        Text(if (speaking) "播放中" else "按住说话")
+                    }
+                    TextButton(onClick = { hangUp() }) { Text("挂断") }
+                } else {
+                    TextButton(onClick = { beginSpeech() }) { Text("说") }
+                    TextButton(onClick = { inCall = true }) { Text("通话") }
+                }
+            }
             OutlinedTextField(
                 value = draft,
                 onValueChange = { draft = it },
@@ -491,6 +609,8 @@ private fun startSpeech(recognizer: SpeechRecognizer) {
 private fun MessageRow(
     message: Message,
     friendName: String,
+    friendAvatarId: String?,
+    voiceEnabled: Boolean,
     ttsReady: Boolean,
     onRetry: () -> Unit,
     onSpeak: () -> Unit,
@@ -502,7 +622,7 @@ private fun MessageRow(
         verticalAlignment = Alignment.Top,
     ) {
         if (assistant) {
-            Avatar(friendName, 28)
+            Avatar(friendName, friendAvatarId, 28)
             Spacer(Modifier.width(8.dp))
         }
         Column(
@@ -522,7 +642,7 @@ private fun MessageRow(
             toolSummary(message.toolCallsJson)?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall)
             }
-            if (assistant && message.content.isNotBlank() && ttsReady) {
+            if (assistant && voiceEnabled && message.content.isNotBlank() && ttsReady) {
                 TextButton(onClick = onSpeak, modifier = Modifier.height(28.dp)) {
                     Text("朗读", style = MaterialTheme.typography.labelSmall)
                 }
@@ -537,18 +657,32 @@ private fun MessageRow(
 }
 
 @Composable
-private fun Avatar(name: String, size: Int) {
+private fun Avatar(name: String, assetId: String?, size: Int) {
+    val context = LocalContext.current
+    val bitmap = remember(assetId) {
+        assetId?.let { AssetStore.file(context, it) }?.let { BitmapFactory.decodeFile(it.path) }
+    }
     Box(
         modifier = Modifier
             .size(size.dp)
+            .clip(CircleShape)
             .background(MaterialTheme.colorScheme.secondaryContainer, CircleShape),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            name.take(1),
-            color = MaterialTheme.colorScheme.onSecondaryContainer,
-            fontSize = (size * 0.42).sp,
-        )
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = name,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
+        } else {
+            Text(
+                name.take(1),
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                fontSize = (size * 0.42).sp,
+            )
+        }
     }
 }
 
@@ -633,43 +767,68 @@ private fun MemoryPanel(repository: YumeRepository, friendId: String) {
 }
 
 @Composable
-private fun PersonaPanel(repository: YumeRepository, friend: Friend, onSaved: () -> Unit) {
+private fun PersonaPanel(
+    repository: YumeRepository,
+    friend: Friend,
+    voiceEnabled: Boolean,
+    onSaved: () -> Unit,
+) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var name by remember { mutableStateOf(friend.name) }
     var personality by remember { mutableStateOf(friend.personality) }
     var instructions by remember { mutableStateOf(friend.customInstructions) }
+    var avatarId by remember(friend.id) { mutableStateOf(friend.avatarAssetId) }
     val voices = remember(friend.id) { repository.voices() }
     var voiceId by remember(friend.id) { mutableStateOf(friend.voiceId) }
     var voiceReplyEnabled by remember(friend.id) { mutableStateOf(friend.voiceReplyEnabled) }
     var voiceMenu by remember { mutableStateOf(false) }
+    val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val id = AssetStore.saveImage(context, uri)
+            avatarId = id
+            repository.updateFriendAvatar(friend.id, id)
+            AppLog.record(context, "更新朋友头像：${friend.name}")
+            onSaved()
+        }
+    }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Avatar(name, avatarId, 72)
+            Spacer(Modifier.width(12.dp))
+            TextButton(onClick = { avatarPicker.launch(arrayOf("image/*")) }) { Text("更换头像") }
+        }
+        Spacer(Modifier.height(8.dp))
         OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("名字") })
         Spacer(Modifier.height(8.dp))
         OutlinedTextField(personality, { personality = it }, Modifier.fillMaxWidth(), label = { Text("人格") }, minLines = 5)
         Spacer(Modifier.height(8.dp))
         OutlinedTextField(instructions, { instructions = it }, Modifier.fillMaxWidth(), label = { Text("补充要求") }, minLines = 3)
         Spacer(Modifier.height(12.dp))
-        Text("声音", style = MaterialTheme.typography.titleMedium)
-        Box {
-            TextButton(onClick = { voiceMenu = true }) {
-                Text(voices.find { it.id == voiceId }?.name ?: "系统默认音色")
-            }
-            DropdownMenu(expanded = voiceMenu, onDismissRequest = { voiceMenu = false }) {
-                DropdownMenuItem(text = { Text("系统默认音色") }, onClick = {
-                    voiceId = null
-                    voiceMenu = false
-                })
-                voices.forEach { voice ->
-                    DropdownMenuItem(text = { Text(voice.name) }, onClick = {
-                        voiceId = voice.id
+        if (voiceEnabled) {
+            Text("声音", style = MaterialTheme.typography.titleMedium)
+            Box {
+                TextButton(onClick = { voiceMenu = true }) {
+                    Text(voices.find { it.id == voiceId }?.name ?: "系统默认音色")
+                }
+                DropdownMenu(expanded = voiceMenu, onDismissRequest = { voiceMenu = false }) {
+                    DropdownMenuItem(text = { Text("系统默认音色") }, onClick = {
+                        voiceId = null
                         voiceMenu = false
                     })
+                    voices.forEach { voice ->
+                        DropdownMenuItem(text = { Text(voice.name) }, onClick = {
+                            voiceId = voice.id
+                            voiceMenu = false
+                        })
+                    }
                 }
             }
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("回复默认带语音", modifier = Modifier.weight(1f))
-            Switch(checked = voiceReplyEnabled, onCheckedChange = { voiceReplyEnabled = it })
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("回复默认带语音", modifier = Modifier.weight(1f))
+                Switch(checked = voiceReplyEnabled, onCheckedChange = { voiceReplyEnabled = it })
+            }
         }
         Spacer(Modifier.height(12.dp))
         Button(
@@ -860,7 +1019,9 @@ private fun ScheduleTab(repository: YumeRepository, friends: List<Friend>) {
 private fun SettingsScreen(
     repository: YumeRepository,
     theme: AppTheme,
+    features: FeatureFlags,
     onThemeChanged: (AppTheme) -> Unit,
+    onFeaturesChanged: (FeatureFlags) -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -876,13 +1037,14 @@ private fun SettingsScreen(
     var updateState by remember { mutableStateOf("") }
     var downloadProgress by remember { mutableStateOf(0) }
     var downloadedApk by remember { mutableStateOf<java.io.File?>(null) }
+    var logs by remember { mutableStateOf(AppLog.read(context)) }
     val voiceTts = remember { TextToSpeech(context) { status -> ttsReady = status == TextToSpeech.SUCCESS } }
     LaunchedEffect(ttsReady) {
         if (ttsReady) {
             systemVoices = voiceTts.voices.orEmpty()
                 .filter { it.locale.language == "zh" || it.locale.language == "en" }
                 .sortedBy { it.name }
-                .take(30)
+                .take(8)
         }
     }
     DisposableEffect(Unit) {
@@ -902,6 +1064,7 @@ private fun SettingsScreen(
                 repository.putSetting("llm_api_key", JsonPrimitive(apiKey).toString())
                 repository.putSetting("llm_model", JsonPrimitive(model).toString())
                 testState = "已保存"
+                AppLog.record(context, "保存模型配置")
             }) { Text("保存模型") }
             TextButton(onClick = {
                 scope.launch {
@@ -911,8 +1074,10 @@ private fun SettingsScreen(
                             listOf("user" to "请只回复：连通正常"),
                         )
                         testState = reply.ifBlank { "连通正常" }
+                        AppLog.record(context, "模型测试成功")
                     } catch (error: Exception) {
                         testState = error.message ?: "连接失败"
+                        AppLog.record(context, "模型测试失败：${error.message}")
                     }
                 }
             }) { Text("测试连接") }
@@ -931,28 +1096,53 @@ private fun SettingsScreen(
             TextButton(onClick = { onThemeChanged(theme.copy(mode = "light")) }) { Text("浅色") }
             TextButton(onClick = { onThemeChanged(theme.copy(mode = "dark")) }) { Text("深色") }
         }
-        HorizontalDivider()
-        Text("语音", style = MaterialTheme.typography.titleLarge)
-        Text("使用 Android 系统 TTS / STT。", style = MaterialTheme.typography.bodySmall)
-        Text("已保存音色", style = MaterialTheme.typography.titleSmall)
-        savedVoices.forEach { voice ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(voice.name, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                TextButton(onClick = {
-                    repository.deleteVoice(voice.id)
-                    savedVoices = repository.voices()
-                }) { Text("删") }
+        if (features.voice) {
+            HorizontalDivider()
+            Text("语音", style = MaterialTheme.typography.titleLarge)
+            Text("使用 Android 系统 TTS / STT。", style = MaterialTheme.typography.bodySmall)
+            Text("已保存音色", style = MaterialTheme.typography.titleSmall)
+            savedVoices.forEach { voice ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(voice.name, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    TextButton(onClick = {
+                        repository.deleteVoice(voice.id)
+                        savedVoices = repository.voices()
+                    }) { Text("删") }
+                }
+            }
+            Text("系统音色", style = MaterialTheme.typography.titleSmall)
+            systemVoices.forEach { voice ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(voice.name, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    TextButton(onClick = {
+                        repository.addVoice(voice.name, voice.name, voice.locale.toLanguageTag())
+                        savedVoices = repository.voices()
+                    }) { Text("添加") }
+                }
             }
         }
-        Text("系统音色", style = MaterialTheme.typography.titleSmall)
-        systemVoices.forEach { voice ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(voice.name, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                TextButton(onClick = {
-                    repository.addVoice(voice.name, voice.name, voice.locale.toLanguageTag())
-                    savedVoices = repository.voices()
-                }) { Text("添加") }
+        HorizontalDivider()
+        Text("功能", style = MaterialTheme.typography.titleLarge)
+        FeatureSwitch("记忆", features.memory) {
+            repository.setFeature("feature_memory_enabled", it)
+            onFeaturesChanged(repository.features())
+        }
+        FeatureSwitch("日程提醒", features.schedule) {
+            repository.setFeature("feature_schedule_enabled", it)
+            if (it) {
+                ScheduleAlarms.refresh(context)
+            } else {
+                repository.pendingSchedules().forEach { schedule -> ScheduleAlarms.cancel(context, schedule.id) }
             }
+            onFeaturesChanged(repository.features())
+        }
+        FeatureSwitch("语音", features.voice) {
+            repository.setFeature("feature_voice_enabled", it)
+            onFeaturesChanged(repository.features())
+        }
+        FeatureSwitch("知识库", features.knowledge) {
+            repository.setFeature("feature_knowledge_enabled", it)
+            onFeaturesChanged(repository.features())
         }
         HorizontalDivider()
         Text("更新", style = MaterialTheme.typography.titleLarge)
@@ -966,6 +1156,7 @@ private fun SettingsScreen(
             TextButton(onClick = {
                 repository.putSetting("apk_update_url", JsonPrimitive(updateUrl).toString())
                 updateState = "地址已保存"
+                AppLog.record(context, "保存更新地址")
             }) { Text("保存地址") }
             TextButton(enabled = updateUrl.isNotBlank(), onClick = {
                 scope.launch {
@@ -983,8 +1174,10 @@ private fun SettingsScreen(
                         } else {
                             "已是最新版本"
                         }
+                        AppLog.record(context, "检查更新：${info.versionName}")
                     } catch (error: Exception) {
                         updateState = error.message ?: "检查失败"
+                        AppLog.record(context, "检查更新失败：${error.message}")
                     }
                 }
             }) { Text("检查更新") }
@@ -996,8 +1189,10 @@ private fun SettingsScreen(
                         try {
                             downloadedApk = ApkUpdate.download(context, info) { downloadProgress = it }
                             updateState = "下载完成"
+                            AppLog.record(context, "更新下载完成：${info.versionName}")
                         } catch (error: Exception) {
                             updateState = error.message ?: "下载失败"
+                            AppLog.record(context, "更新下载失败：${error.message}")
                         }
                     }
                 }) { Text("下载更新") }
@@ -1008,5 +1203,26 @@ private fun SettingsScreen(
             if (downloadProgress in 1..99) Text("下载 $downloadProgress%")
         }
         if (updateState.isNotBlank()) Text(updateState, style = MaterialTheme.typography.bodySmall)
+        HorizontalDivider()
+        Text("日志", style = MaterialTheme.typography.titleLarge)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = { logs = AppLog.read(context) }) { Text("刷新") }
+            TextButton(onClick = {
+                AppLog.clear(context)
+                logs = emptyList()
+            }) { Text("清空") }
+        }
+        Text(
+            logs.joinToString("\n").ifBlank { "暂无日志" },
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+}
+
+@Composable
+private fun FeatureSwitch(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(label, modifier = Modifier.weight(1f))
+        Switch(checked = checked, onCheckedChange = onChange)
     }
 }

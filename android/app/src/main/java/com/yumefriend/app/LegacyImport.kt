@@ -18,6 +18,7 @@ object LegacyImport {
         dbFile: File,
         create: (String, String, JsonObject) -> Unit,
         putSetting: (String, String) -> Unit,
+        saveAvatar: (String?) -> String?,
     ) {
         val db = SQLiteDatabase.openDatabase(dbFile.path, null, SQLiteDatabase.OPEN_READONLY)
         db.use {
@@ -30,6 +31,7 @@ object LegacyImport {
                         put("name", text(row.string("name")))
                         put("personality", text(row.string("personality")))
                         put("custom_instructions", text(row.string("custom_instructions")))
+                        putIf("avatar_asset_id", saveAvatar(row.string("avatar_path")))
                         putIf("avatar_description", row.string("avatar_description"))
                         putIf("voice_id", row.string("voice_id"))
                         put("voice_reply_enabled", number(row.int("voice_reply_enabled") ?: 0))

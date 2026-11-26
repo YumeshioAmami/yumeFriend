@@ -91,6 +91,13 @@ data class Voice(
     val locale: String,
 )
 
+data class FeatureFlags(
+    val memory: Boolean = true,
+    val schedule: Boolean = true,
+    val voice: Boolean = true,
+    val knowledge: Boolean = true,
+)
+
 data class MessagePage(
     val items: List<Message>,
     val nextCursor: String?,
@@ -202,6 +209,18 @@ class YumeRepository(
                 put("name", text(name))
                 put("personality", text(personality))
                 put("custom_instructions", text(instructions))
+            },
+        )
+    }
+
+    fun updateFriendAvatar(friendId: String, assetId: String) {
+        write(
+            "friend",
+            "friends",
+            WriteOp.UPDATE,
+            buildJsonObject {
+                put("id", text(friendId))
+                put("avatar_asset_id", text(assetId))
             },
         )
     }
@@ -761,6 +780,22 @@ class YumeRepository(
 
     fun voiceById(id: String): Voice? = voices().find { it.id == id }
 
+    fun features(): FeatureFlags = FeatureFlags(
+        memory = featureEnabled("feature_memory_enabled"),
+        schedule = featureEnabled("feature_schedule_enabled"),
+        voice = featureEnabled("feature_voice_enabled"),
+        knowledge = featureEnabled("feature_knowledge_enabled"),
+    )
+
+    fun setFeature(key: String, enabled: Boolean) {
+        putSetting(key, JsonPrimitive(enabled).toString())
+    }
+
+    private fun featureEnabled(key: String): Boolean {
+        val raw = setting(key) ?: return true
+        return raw.removeSurrounding("\"") == "true"
+    }
+
     fun addVoice(name: String, engineVoice: String, locale: String): Voice {
         val id = UUID.randomUUID().toString()
         write(
@@ -803,11 +838,14 @@ class YumeRepository(
         )
     }
 
-    fun importLegacy(dbFile: java.io.File) {
+    fun importLegacy(context: android.content.Context, dbFile: java.io.File) {
         LegacyImport.run(
             dbFile,
             create = { module, entity, data -> write(module, entity, WriteOp.CREATE, data) },
             putSetting = ::putSetting,
+            saveAvatar = { relativePath ->
+                relativePath?.let { AssetStore.saveFile(context, java.io.File(context.filesDir, it)) }
+            },
         )
     }
 
@@ -820,7 +858,11 @@ class YumeRepository(
     ) {
         try {
             val config = llmConfig() ?: error("请先在设置里填写模型")
-            val memoryText = recallMemories(friend.id, userText).joinToString("\n") { "- ${it.content}" }
+            val memoryText = if (featureEnabled("feature_memory_enabled")) {
+                recallMemories(friend.id, userText).joinToString("\n") { "- ${it.content}" }
+            } else {
+                ""
+            }
             val history = messages(friend.id)
                 .filter { it.id != assistantId && it.content.isNotBlank() }
                 .takeLast(20)
@@ -835,8 +877,10 @@ class YumeRepository(
             val reply = openAi.streamChat(config, messages, onDelta = onDelta)
             updateMessage(assistantId, reply, "completed")
             emit(ChatEvent.End(messageById(assistantId)!!))
-            CoroutineScope(Dispatchers.IO).launch {
-                extractMemories(friend.id, messages.filter { it.first != "system" }, reply, config)
+            if (featureEnabled("feature_memory_enabled")) {
+                CoroutineScope(Dispatchers.IO).launch {
+                    extractMemories(friend.id, messages.filter { it.first != "system" }, reply, config)
+                }
             }
         } catch (error: CancellationException) {
             withContext(NonCancellable) {

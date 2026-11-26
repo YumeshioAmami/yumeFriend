@@ -29,6 +29,10 @@ object ScheduleAlarms {
 
     fun refresh(context: Context) {
         val repository = (context.applicationContext as YumeApp).repository
+        if (!repository.features().schedule) {
+            repository.pendingSchedules().forEach { cancel(context, it.id) }
+            return
+        }
         val now = System.currentTimeMillis()
         repository.pendingSchedules().forEach { schedule ->
             val due = dueAt(schedule) ?: return@forEach
@@ -41,6 +45,7 @@ object ScheduleAlarms {
     }
 
     fun schedule(context: Context, schedule: Schedule) {
+        if (!(context.applicationContext as YumeApp).repository.features().schedule) return
         val due = dueAt(schedule) ?: return
         if (due <= System.currentTimeMillis()) return
         val alarm = context.getSystemService(AlarmManager::class.java)
@@ -72,6 +77,7 @@ object ScheduleAlarms {
             .build()
         context.getSystemService(NotificationManager::class.java)
             .notify(scheduleId.hashCode(), notification)
+        AppLog.record(context, "日程提醒：$title")
     }
 
     private fun pendingIntent(context: Context, scheduleId: String): PendingIntent =
