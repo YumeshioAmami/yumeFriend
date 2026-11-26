@@ -779,6 +779,11 @@ private fun SettingsScreen(
     var ttsReady by remember { mutableStateOf(false) }
     var systemVoices by remember { mutableStateOf<List<android.speech.tts.Voice>>(emptyList()) }
     var savedVoices by remember { mutableStateOf(repository.voices()) }
+    var updateUrl by remember { mutableStateOf(repository.setting("apk_update_url")?.removeSurrounding("\"").orEmpty()) }
+    var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
+    var updateState by remember { mutableStateOf("") }
+    var downloadProgress by remember { mutableStateOf(0) }
+    var downloadedApk by remember { mutableStateOf<java.io.File?>(null) }
     val voiceTts = remember { TextToSpeech(context) { status -> ttsReady = status == TextToSpeech.SUCCESS } }
     LaunchedEffect(ttsReady) {
         if (ttsReady) {
@@ -857,5 +862,59 @@ private fun SettingsScreen(
                 }) { Text("添加") }
             }
         }
+        HorizontalDivider()
+        Text("更新", style = MaterialTheme.typography.titleLarge)
+        OutlinedTextField(
+            updateUrl,
+            { updateUrl = it },
+            Modifier.fillMaxWidth(),
+            label = { Text("latest.json 地址") },
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = {
+                repository.putSetting("apk_update_url", JsonPrimitive(updateUrl).toString())
+                updateState = "地址已保存"
+            }) { Text("保存地址") }
+            TextButton(enabled = updateUrl.isNotBlank(), onClick = {
+                scope.launch {
+                    try {
+                        val info = ApkUpdate.check(updateUrl.trim())
+                        val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+                        val current = if (Build.VERSION.SDK_INT >= 28) {
+                            packageInfo.longVersionCode
+                        } else {
+                            packageInfo.versionCode.toLong()
+                        }
+                        updateInfo = info
+                        updateState = if (info.versionCode > current) {
+                            "发现 ${info.versionName}：${info.notes}"
+                        } else {
+                            "已是最新版本"
+                        }
+                    } catch (error: Exception) {
+                        updateState = error.message ?: "检查失败"
+                    }
+                }
+            }) { Text("检查更新") }
+        }
+        updateInfo?.let { info ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = {
+                    scope.launch {
+                        try {
+                            downloadedApk = ApkUpdate.download(context, info) { downloadProgress = it }
+                            updateState = "下载完成"
+                        } catch (error: Exception) {
+                            updateState = error.message ?: "下载失败"
+                        }
+                    }
+                }) { Text("下载更新") }
+                downloadedApk?.let { file ->
+                    TextButton(onClick = { ApkUpdate.install(context, file) }) { Text("安装") }
+                }
+            }
+            if (downloadProgress in 1..99) Text("下载 $downloadProgress%")
+        }
+        if (updateState.isNotBlank()) Text(updateState, style = MaterialTheme.typography.bodySmall)
     }
 }
