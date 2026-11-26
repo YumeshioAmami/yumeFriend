@@ -49,6 +49,13 @@ data class Message(
     val createdAt: String,
     val sourcesJson: String = "",
     val toolCallsJson: String = "",
+    val segments: List<MessageSegment> = emptyList(),
+)
+
+data class MessageSegment(
+    val bubble: Int,
+    val text: String,
+    val mood: String?,
 )
 
 data class Memory(
@@ -271,6 +278,7 @@ class YumeRepository(
                 createdAt = it.str("created_at"),
                 sourcesJson = it.str("sources_json"),
                 toolCallsJson = it.str("tool_calls_json"),
+                segments = parseSegments(it.str("segments_json")),
             )
         }
 
@@ -981,7 +989,23 @@ class YumeRepository(
             it.str("created_at"),
             it.str("sources_json"),
             it.str("tool_calls_json"),
+            parseSegments(it.str("segments_json")),
         )
+    }
+
+    private fun parseSegments(raw: String): List<MessageSegment> {
+        if (raw.isBlank()) return emptyList()
+        return runCatching {
+            val items = JSONArray(raw)
+            (0 until items.length()).mapNotNull { index ->
+                val item = items.optJSONObject(index) ?: return@mapNotNull null
+                MessageSegment(
+                    item.optInt("bubble"),
+                    item.optString("text"),
+                    item.optString("mood").ifBlank { null },
+                )
+            }
+        }.getOrDefault(emptyList())
     }
 
     fun stopMessage(messageId: String) {

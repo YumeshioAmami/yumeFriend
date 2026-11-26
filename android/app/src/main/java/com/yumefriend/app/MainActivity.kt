@@ -20,9 +20,11 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,15 +32,20 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -50,6 +57,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
@@ -67,6 +75,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -138,14 +149,27 @@ private fun YumeRoot(repository: YumeRepository) {
         } else {
             Scaffold(
                 bottomBar = {
-                    NavigationBar {
-                        tabs.forEach { (key, label) ->
-                            NavigationBarItem(
-                                selected = tab == key,
-                                onClick = { tab = key },
-                                icon = { Text(label.take(1)) },
-                                label = { Text(label) },
-                            )
+                    Column {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        NavigationBar(
+                            containerColor = MaterialTheme.colorScheme.background,
+                            tonalElevation = 0.dp,
+                        ) {
+                            tabs.forEach { (key, label) ->
+                                NavigationBarItem(
+                                    selected = tab == key,
+                                    onClick = { tab = key },
+                                    icon = { Text(label.take(1)) },
+                                    label = { Text(label) },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = MaterialTheme.colorScheme.primary,
+                                        selectedTextColor = MaterialTheme.colorScheme.primary,
+                                        indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    ),
+                                )
+                            }
                         }
                     }
                 },
@@ -184,50 +208,57 @@ private fun FriendsScreen(
     onChanged: () -> Unit,
 ) {
     var showCreate by remember { mutableStateOf(false) }
-    var deleteTarget by remember { mutableStateOf<Friend?>(null) }
     val scope = rememberCoroutineScope()
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
     ) {
         item {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text("朋友", style = MaterialTheme.typography.titleLarge)
-                Button(onClick = { showCreate = true }) { Text("新建") }
+                Text("朋友", style = MaterialTheme.typography.headlineSmall)
+                TextButton(onClick = { showCreate = true }) {
+                    Text("＋ 创建朋友", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
-            Spacer(Modifier.height(12.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         }
         items(friends, key = { it.id }) { friend ->
-            Card(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 8.dp)
                     .clickable { onOpen(friend) },
             ) {
                 Row(
-                    modifier = Modifier.padding(14.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Avatar(friend.name, friend.avatarAssetId, 38)
-                    Spacer(Modifier.width(10.dp))
+                    Avatar(friend.name, friend.avatarAssetId, 36)
+                    Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(friend.name, fontWeight = FontWeight.Medium)
+                        Text(friend.name, fontSize = 15.sp)
                         Text(
                             friend.personality.ifBlank { "还没聊过" },
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    TextButton(onClick = { deleteTarget = friend }) { Text("删除") }
                     if (friend.unreadCount > 0) {
-                        Text("${friend.unreadCount}", color = MaterialTheme.colorScheme.primary)
+                        Text(
+                            "${friend.unreadCount}",
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            fontSize = 10.sp,
+                            modifier = Modifier
+                                .background(MaterialTheme.colorScheme.primary, CircleShape)
+                                .padding(horizontal = 5.dp, vertical = 2.dp),
+                        )
                     }
                 }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
         }
     }
@@ -239,23 +270,6 @@ private fun FriendsScreen(
                 onChanged()
             }
         }
-    }
-    deleteTarget?.let { friend ->
-        AlertDialog(
-            onDismissRequest = { deleteTarget = null },
-            title = { Text("删除朋友") },
-            text = { Text("连同聊天和记忆一起删除「${friend.name}」？") },
-            confirmButton = {
-                TextButton(onClick = {
-                    scope.launch {
-                        repository.deleteFriend(friend)
-                        deleteTarget = null
-                        onChanged()
-                    }
-                }) { Text("删除") }
-            },
-            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("取消") } },
-        )
     }
 }
 
@@ -310,6 +324,7 @@ private fun ChatScreen(
     var speaking by remember { mutableStateOf(false) }
     var inCall by remember { mutableStateOf(false) }
     var recognizedText by remember { mutableStateOf<String?>(null) }
+    var immersive by remember { mutableStateOf(false) }
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val tts = remember { TextToSpeech(context) { status -> ttsReady = status == TextToSpeech.SUCCESS } }
     val recognizer = remember {
@@ -471,6 +486,11 @@ private fun ChatScreen(
         runReply(repository.retryMessage(user.id))
     }
 
+    if (immersive) {
+        ImmersiveScreen(repository, friend, features, messages) { immersive = false }
+        return
+    }
+
     val currentPanel = panel
     if (currentPanel != null) {
         Column(Modifier.fillMaxSize()) {
@@ -480,7 +500,7 @@ private fun ChatScreen(
             )
             when (currentPanel) {
                 ChatPanel.MEMORY -> MemoryPanel(repository, friend.id)
-                ChatPanel.PERSONA -> PersonaPanel(repository, friend, features.voice, onFriendUpdated)
+                ChatPanel.PERSONA -> PersonaPanel(repository, friend, features.voice, onFriendUpdated, onBack)
                 ChatPanel.SCHEDULE -> SchedulePanel(repository, friend.id)
                 ChatPanel.KNOWLEDGE -> KnowledgePanel(repository, friend.id)
             }
@@ -489,25 +509,30 @@ private fun ChatScreen(
     }
 
     Column(Modifier.fillMaxSize()) {
-        TopAppBar(
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Avatar(friend.name, friend.avatarAssetId, 34)
-                    Spacer(Modifier.width(10.dp))
-                    Column {
-                        Text(friend.name)
-                        Text(
-                            if (friend.presence) "在场" else "不在场",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                }
-            },
-            navigationIcon = { TextButton(onClick = onBack) { Text("返回") } },
-        )
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TextButton(onClick = onBack) {
+                Text("返回", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+            }
+            Avatar(friend.name, friend.avatarAssetId, 34)
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(friend.name, fontSize = 22.sp)
+                Text(
+                    if (friend.presence) "现在在线 · 想聊点什么" else "不在场",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             buildList {
                 if (features.memory) add("记忆" to ChatPanel.MEMORY)
@@ -515,21 +540,43 @@ private fun ChatScreen(
                 if (features.schedule) add("日程" to ChatPanel.SCHEDULE)
                 if (features.knowledge) add("知识" to ChatPanel.KNOWLEDGE)
             }.forEach { (label, target) ->
-                TextButton(onClick = { panel = target }) { Text(label) }
+                Text(
+                    label,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                    modifier = Modifier.clickable { panel = target }.padding(vertical = 2.dp),
+                )
             }
             if (features.voice) {
-                TextButton(onClick = {
-                    val text = messages.lastOrNull { it.role == "assistant" }?.content.orEmpty()
-                    if (text.isNotBlank()) speak("reply", text)
-                }) { Text(if (speaking) "重播" else "语音") }
+                Text(
+                    if (speaking) "重播" else "语音",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                    modifier = Modifier.clickable {
+                        val text = messages.lastOrNull { it.role == "assistant" }?.content.orEmpty()
+                        if (text.isNotBlank()) speak("reply", text)
+                    }.padding(vertical = 2.dp),
+                )
                 if (speaking) {
-                    TextButton(onClick = {
-                        tts.stop()
-                        speaking = false
-                    }) { Text("停止") }
+                    Text(
+                        "停止",
+                        color = MaterialTheme.colorScheme.primary,
+                        fontSize = 12.sp,
+                        modifier = Modifier.clickable {
+                            tts.stop()
+                            speaking = false
+                        }.padding(vertical = 2.dp),
+                    )
                 }
             }
+            Text(
+                "沉浸",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp,
+                modifier = Modifier.clickable { immersive = true }.padding(vertical = 2.dp),
+            )
         }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         LazyColumn(
             modifier = Modifier.weight(1f),
             contentPadding = PaddingValues(16.dp),
@@ -553,16 +600,16 @@ private fun ChatScreen(
                 }
             }
         }
-        HorizontalDivider()
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Row(
-            modifier = Modifier.fillMaxWidth().padding(8.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (features.voice) {
                 if (inCall) {
                     Box(
                         modifier = Modifier
-                            .clip(CircleShape)
+                            .clip(RoundedCornerShape(6.dp))
                             .background(MaterialTheme.colorScheme.primaryContainer)
                             .pointerInput(sending, speaking, inCall) {
                                 detectTapGestures(onPress = {
@@ -573,25 +620,72 @@ private fun ChatScreen(
                                     }
                                 })
                             }
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                            .padding(horizontal = 10.dp, vertical = 7.dp),
                     ) {
-                        Text(if (speaking) "播放中" else "按住说话")
+                        Text(if (speaking) "播放中" else "按住说话", fontSize = 12.sp)
                     }
-                    TextButton(onClick = { hangUp() }) { Text("挂断") }
+                    Text(
+                        "挂断",
+                        color = MaterialTheme.colorScheme.primary,
+                        fontSize = 12.sp,
+                        modifier = Modifier.clickable { hangUp() }.padding(horizontal = 8.dp, vertical = 8.dp),
+                    )
                 } else {
-                    TextButton(onClick = { beginSpeech() }) { Text("说") }
-                    TextButton(onClick = { inCall = true }) { Text("通话") }
+                    Text(
+                        "说",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 13.sp,
+                        modifier = Modifier.clickable { beginSpeech() }.padding(horizontal = 6.dp, vertical = 8.dp),
+                    )
+                    Text(
+                        "通话",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 13.sp,
+                        modifier = Modifier.clickable { inCall = true }.padding(horizontal = 6.dp, vertical = 8.dp),
+                    )
                 }
             }
-            OutlinedTextField(
+            BasicTextField(
                 value = draft,
                 onValueChange = { draft = it },
-                modifier = Modifier.weight(1f),
-                placeholder = { Text("说点什么…") },
+                modifier = Modifier.weight(1f).padding(vertical = 8.dp),
+                textStyle = MaterialTheme.typography.bodyMedium.copy(
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 14.sp,
+                ),
                 maxLines = 3,
+                decorationBox = { inner ->
+                    if (draft.isBlank()) {
+                        Text(
+                            "说点什么……",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 14.sp,
+                        )
+                    }
+                    inner()
+                },
             )
-            if (sending) TextButton(onClick = { stop() }) { Text("停止") }
-            else TextButton(enabled = draft.isNotBlank(), onClick = { send() }) { Text("发送") }
+            if (sending) {
+                Text(
+                    "停止",
+                    color = MaterialTheme.colorScheme.primary,
+                    fontSize = 13.sp,
+                    modifier = Modifier.clickable { stop() }.padding(horizontal = 8.dp, vertical = 8.dp),
+                )
+            } else {
+                Text(
+                    "发送",
+                    color = if (draft.isNotBlank()) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    fontSize = 13.sp,
+                    modifier = Modifier
+                        .clickable(enabled = draft.isNotBlank()) { send() }
+                        .padding(horizontal = 8.dp, vertical = 8.dp),
+                )
+            }
         }
     }
 }
@@ -603,6 +697,244 @@ private fun startSpeech(recognizer: SpeechRecognizer) {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
         },
     )
+}
+
+@Composable
+private fun ImmersiveScreen(
+    repository: YumeRepository,
+    friend: Friend,
+    features: FeatureFlags,
+    initialMessages: List<Message>,
+    onExit: () -> Unit,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var messages by remember { mutableStateOf(initialMessages) }
+    var mode by remember { mutableStateOf("her") }
+    var index by remember { mutableStateOf(0) }
+    var draft by remember { mutableStateOf("") }
+    var sending by remember { mutableStateOf(false) }
+    var ttsReady by remember { mutableStateOf(false) }
+    var speaking by remember { mutableStateOf(false) }
+    var playedId by remember { mutableStateOf("") }
+    val mainHandler = remember { Handler(Looper.getMainLooper()) }
+    val tts = remember { TextToSpeech(context) { status -> ttsReady = status == TextToSpeech.SUCCESS } }
+    val lastAssistant = messages.lastOrNull {
+        it.role == "assistant" && it.status == "completed" && it.content.isNotBlank()
+    }
+    val units = immersiveUnits(lastAssistant)
+    val safeIndex = index.coerceIn(0, (units.size - 1).coerceAtLeast(0))
+    val current = units.getOrNull(safeIndex).orEmpty()
+
+    DisposableEffect(tts) {
+        tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            override fun onStart(utteranceId: String?) {
+                mainHandler.post { speaking = true }
+            }
+
+            override fun onDone(utteranceId: String?) {
+                mainHandler.post { speaking = false }
+            }
+
+            override fun onError(utteranceId: String?) {
+                mainHandler.post { speaking = false }
+            }
+        })
+        onDispose {
+            tts.stop()
+            tts.shutdown()
+        }
+    }
+    fun speak(messageId: String, text: String) {
+        if (!features.voice || !ttsReady || text.isBlank()) return
+        val bubbles = text.split("<<<MSG>>>").map { it.trim() }.filter { it.isNotEmpty() }
+        repository.voiceById(friend.voiceId.orEmpty())?.engineVoice
+            ?.let { engineName -> tts.voices?.find { it.name == engineName } }
+            ?.let { tts.voice = it }
+        tts.stop()
+        bubbles.forEachIndexed { bubbleIndex, bubble ->
+            tts.speak(
+                bubble,
+                if (bubbleIndex == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD,
+                null,
+                "$messageId-$bubbleIndex",
+            )
+        }
+    }
+    LaunchedEffect(lastAssistant?.id, lastAssistant?.status, ttsReady) {
+        if (lastAssistant?.status != "completed") return@LaunchedEffect
+        index = 0
+        mode = "her"
+        if (playedId != lastAssistant.id) {
+            playedId = lastAssistant.id
+            speak(lastAssistant.id, lastAssistant.content)
+        }
+    }
+    fun send() {
+        val text = draft.trim()
+        if (text.isBlank() || sending) return
+        draft = ""
+        scope.launch {
+            sending = true
+            try {
+                repository.sendMessageStream(friend, text).collect { event ->
+                    when (event) {
+                        is ChatEvent.Start -> {
+                            messages = repository.messagePage(friend.id, null).items
+                            index = 0
+                            mode = "her"
+                        }
+                        is ChatEvent.End, is ChatEvent.Error -> {
+                            messages = repository.messagePage(friend.id, null).items
+                        }
+                        is ChatEvent.Delta -> Unit
+                    }
+                }
+            } finally {
+                sending = false
+                messages = repository.messagePage(friend.id, null).items
+            }
+        }
+    }
+
+    val bitmap = remember(friend.avatarAssetId) {
+        friend.avatarAssetId?.let { AssetStore.file(context, it) }
+            ?.let { BitmapFactory.decodeFile(it.path) }
+    }
+    Box(Modifier.fillMaxSize().background(Color(0xFF0D0D10))) {
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize().alpha(0.18f).blur(24.dp),
+                contentScale = ContentScale.Crop,
+            )
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = friend.name,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 180.dp)
+                    .fillMaxWidth(0.82f)
+                    .fillMaxHeight(0.72f),
+                contentScale = ContentScale.Fit,
+            )
+        } else {
+            Text(
+                friend.name.take(1),
+                color = Color.White.copy(alpha = 0.12f),
+                fontSize = 160.sp,
+                modifier = Modifier.align(Alignment.Center),
+            )
+        }
+        Text(
+            when {
+                sending -> "正在说…"
+                mode == "me" -> "轮到你"
+                else -> "点一下继续"
+            },
+            color = Color.White.copy(alpha = 0.5f),
+            fontSize = 12.sp,
+            modifier = Modifier.align(Alignment.TopStart).statusBarsPadding().padding(20.dp),
+        )
+        Text(
+            "退出沉浸",
+            color = Color.White.copy(alpha = 0.7f),
+            fontSize = 12.sp,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .statusBarsPadding()
+                .padding(16.dp)
+                .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(4.dp))
+                .clickable(onClick = onExit)
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+        )
+        Column(
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding(),
+        ) {
+            HorizontalDivider(color = Color.White.copy(alpha = 0.15f))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0x8C000000))
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+            ) {
+                Text(
+                    if (mode == "her") friend.name else "我",
+                    color = Color.White.copy(alpha = 0.65f),
+                    fontSize = 13.sp,
+                )
+                Spacer(Modifier.height(6.dp))
+                if (mode == "her") {
+                    Text(
+                        current.ifBlank { if (sending) "……" else "（她在等你说话）" },
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        lineHeight = 29.sp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                if (safeIndex < units.size - 1) index = safeIndex + 1 else mode = "me"
+                            },
+                    )
+                    Text(
+                        when {
+                            safeIndex < units.size - 1 -> "▼ 点一下继续"
+                            sending -> "正在说…"
+                            speaking -> "播放中"
+                            else -> "点一下轮到你 ▸"
+                        },
+                        color = Color.White.copy(alpha = 0.4f),
+                        fontSize = 11.sp,
+                        modifier = Modifier.align(Alignment.End),
+                    )
+                } else {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        BasicTextField(
+                            value = draft,
+                            onValueChange = { draft = it },
+                            modifier = Modifier.weight(1f).padding(vertical = 8.dp),
+                            textStyle = MaterialTheme.typography.bodyLarge.copy(
+                                color = Color.White,
+                                fontSize = 16.sp,
+                            ),
+                            maxLines = 3,
+                            decorationBox = { inner ->
+                                if (draft.isBlank()) {
+                                    Text(
+                                        "对 ${friend.name} 说……",
+                                        color = Color.White.copy(alpha = 0.35f),
+                                        fontSize = 16.sp,
+                                    )
+                                }
+                                inner()
+                            },
+                        )
+                        Text(
+                            "说",
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            modifier = Modifier
+                                .clickable(enabled = draft.isNotBlank() && !sending) { send() }
+                                .padding(horizontal = 10.dp, vertical = 10.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun immersiveUnits(message: Message?): List<String> {
+    if (message == null) return emptyList()
+    if (message.segments.isNotEmpty()) {
+        return message.segments.map { it.text.trim() }.filter { it.isNotEmpty() }
+    }
+    return message.content
+        .split("<<<MSG>>>")
+        .flatMap { it.split(Regex("\\n\\s*\\n")) }
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
 }
 
 @Composable
@@ -624,9 +956,16 @@ private fun MessageRow(
         if (assistant) {
             Avatar(friendName, friendAvatarId, 28)
             Spacer(Modifier.width(8.dp))
+            Box(
+                Modifier
+                    .width(1.dp)
+                    .height(22.dp)
+                    .background(MaterialTheme.colorScheme.outlineVariant),
+            )
+            Spacer(Modifier.width(10.dp))
         }
         Column(
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).padding(vertical = 1.dp),
             horizontalAlignment = if (assistant) Alignment.Start else Alignment.End,
         ) {
             if (bubbles.isEmpty() && message.status == "streaming") {
@@ -634,7 +973,10 @@ private fun MessageRow(
             }
             bubbles.forEachIndexed { index, bubble ->
                 if (index > 0) Spacer(Modifier.height(4.dp))
-                Text(text = bubble, style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    text = bubble,
+                    style = MaterialTheme.typography.bodyLarge.copy(fontSize = 14.sp, lineHeight = 25.sp),
+                )
             }
             sourceSummary(message.sourcesJson)?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall)
@@ -772,6 +1114,7 @@ private fun PersonaPanel(
     friend: Friend,
     voiceEnabled: Boolean,
     onSaved: () -> Unit,
+    onDeleted: () -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -783,6 +1126,7 @@ private fun PersonaPanel(
     var voiceId by remember(friend.id) { mutableStateOf(friend.voiceId) }
     var voiceReplyEnabled by remember(friend.id) { mutableStateOf(friend.voiceReplyEnabled) }
     var voiceMenu by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
     val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
@@ -841,6 +1185,25 @@ private fun PersonaPanel(
                 }
             },
         ) { Text("保存人格") }
+        Spacer(Modifier.height(16.dp))
+        TextButton(onClick = { confirmDelete = true }) {
+            Text("删除朋友", color = MaterialTheme.colorScheme.error)
+        }
+    }
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("删除朋友") },
+            text = { Text("连同聊天和记忆一起删除「${friend.name}」？") },
+            confirmButton = {
+                TextButton(onClick = {
+                    repository.deleteFriend(friend)
+                    confirmDelete = false
+                    onDeleted()
+                }) { Text("删除") }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("取消") } },
+        )
     }
 }
 
