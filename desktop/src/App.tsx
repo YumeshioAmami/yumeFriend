@@ -11,8 +11,18 @@ import {
   downloadLive2DRuntime,
   drawImage,
   getLive2DRuntimeStatus,
+  getSyncConflicts,
+  getSyncDevices,
+  getSyncGrants,
+  getSyncPeers,
+  grantSyncModule,
   listVisualPacks,
+  pairSyncAddress,
+  pairSyncDevice,
   patchFriend,
+  runSync,
+  revokeSyncModule,
+  saveSetting,
   synthesizeVoice,
   testModel,
   transcribeAudio,
@@ -20,6 +30,10 @@ import {
   type Friend,
   type Live2DRuntimeStatus,
   type Message,
+  type SyncConflict,
+  type SyncDevice,
+  type SyncGrant,
+  type SyncPeer,
 } from "./api";
 import { FeatureDrawer } from "./FeatureDrawer";
 import { Live2DCharacter } from "./Live2DCharacter";
@@ -32,6 +46,18 @@ const LIVE2D_PROPRIETARY_LICENSE =
   "https://www.live2d.com/eula/live2d-proprietary-software-license-agreement_en.html";
 const LIVE2D_OPEN_LICENSE =
   "https://www.live2d.com/eula/live2d-open-software-license-agreement_en.html";
+
+const SYNC_MODULES = [
+  ["friend", "朋友"],
+  ["chat", "聊天"],
+  ["memory", "记忆"],
+  ["schedule", "日程"],
+  ["thought", "想法"],
+  ["expression", "风格"],
+  ["document", "知识"],
+  ["life", "生活"],
+  ["visual", "呈现"],
+] as const;
 
 function formatDateDivider(value: string): string {
   const date = new Date(value);
@@ -348,8 +374,16 @@ function SettingsModal() {
   const [modelTest, setModelTest] = useState("");
   const [updateVersion, setUpdateVersion] = useState("");
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
+  const [syncDevices, setSyncDevices] = useState<SyncDevice[]>([]);
+  const [syncPeers, setSyncPeers] = useState<SyncPeer[]>([]);
+  const [syncConflicts, setSyncConflicts] = useState<SyncConflict[]>([]);
+  const [syncMessage, setSyncMessage] = useState("");
+  const [expandedSyncPeer, setExpandedSyncPeer] = useState<string | null>(null);
+  const [syncGrants, setSyncGrants] = useState<SyncGrant[]>([]);
+  const [manualSyncHost, setManualSyncHost] = useState("");
+  const [manualSyncPort, setManualSyncPort] = useState("47896");
   const [tab, setTab] = useState<
-    "models" | "appearance" | "voice" | "visual" | "features" | "update" | "about"
+    "models" | "appearance" | "voice" | "visual" | "sync" | "features" | "update" | "about"
   >("models");
 
   useEffect(() => {
@@ -375,6 +409,26 @@ function SettingsModal() {
     });
   }, [settingsOpen]);
 
+  const refreshSync = async () => {
+    const [devices, peers, conflicts] = await Promise.all([
+      getSyncDevices(),
+      getSyncPeers(),
+      getSyncConflicts(),
+    ]);
+    setSyncDevices(devices);
+    setSyncPeers(peers);
+    setSyncConflicts(conflicts);
+  };
+
+  useEffect(() => {
+    if (!settingsOpen || tab !== "sync") return;
+    void refreshSync().catch((reason) => setSyncMessage(String(reason)));
+    const timer = window.setInterval(() => {
+      void refreshSync().catch(() => undefined);
+    }, 3_000);
+    return () => window.clearInterval(timer);
+  }, [settingsOpen, tab]);
+
   if (!settingsOpen) return null;
   return (
     <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/15">
@@ -396,6 +450,7 @@ function SettingsModal() {
               ["appearance", "外观"],
               ["voice", "语音"],
               ["visual", "视觉"],
+              ["sync", "同步"],
               ["features", "功能"],
               ["update", "更新"],
               ["about", "关于"],
@@ -688,6 +743,238 @@ function SettingsModal() {
             </button>
           </div>
         </div>
+        )}
+        {tab === "sync" && (
+          <div className="space-y-3">
+            <section className="rounded-2xl border border-[var(--border)] bg-[var(--panel-2)] p-4">
+              <h3 className="text-sm font-medium text-[var(--text)]">局域网同步</h3>
+              <label className="mt-2 flex items-center gap-2 text-xs text-[var(--muted)]">
+                <input
+                  type="checkbox"
+                  checked={draft.sync_pairing_enabled}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      sync_pairing_enabled: event.target.checked,
+                    }))
+                  }
+                />
+                允许其他设备向我发起配对
+              </label>
+              <div className="mt-3 text-xs text-[var(--muted)]">发现的设备</div>
+              {syncDevices.length === 0 && (
+                <div className="mt-1 text-xs text-[var(--muted)]">暂无</div>
+              )}
+              {syncDevices.map((device) => {
+                const paired = syncPeers.some((peer) => peer.device_id === device.id);
+                return (
+                  <div key={device.id} className="mt-2 flex items-center gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs text-[var(--text)]">{device.product_id}</div>
+                      <div className="text-[11px] text-[var(--muted)]">
+                        {device.host}:{device.port}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={paired}
+                      className="rounded border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted)] disabled:opacity-40"
+                      onClick={async () => {
+                        setSyncMessage("正在配对…");
+                        try {
+                          await pairSyncDevice(device.id);
+                          setSyncMessage("配对完成");
+                          await refreshSync();
+                        } catch (reason) {
+                          setSyncMessage(String(reason));
+                        }
+                      }}
+                    >
+                      {paired ? "已配对" : "配对"}
+                    </button>
+                  </div>
+                );
+              })}
+              <div className="mt-3 flex items-center gap-2">
+                <input
+                  className="min-w-0 flex-1 rounded border border-[var(--border)] bg-transparent px-2 py-1 text-xs"
+                  placeholder="手动地址"
+                  value={manualSyncHost}
+                  onChange={(event) => setManualSyncHost(event.target.value)}
+                />
+                <input
+                  className="w-20 rounded border border-[var(--border)] bg-transparent px-2 py-1 text-xs"
+                  placeholder="端口"
+                  value={manualSyncPort}
+                  onChange={(event) => setManualSyncPort(event.target.value)}
+                />
+                <button
+                  type="button"
+                  className="rounded border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted)]"
+                  onClick={async () => {
+                    try {
+                      await pairSyncAddress(manualSyncHost.trim(), Number(manualSyncPort));
+                      setSyncMessage("手动配对完成");
+                      await refreshSync();
+                    } catch (reason) {
+                      setSyncMessage(String(reason));
+                    }
+                  }}
+                >
+                  手动配对
+                </button>
+              </div>
+            </section>
+            <section className="rounded-2xl border border-[var(--border)] bg-[var(--panel-2)] p-4">
+              <h3 className="text-sm font-medium text-[var(--text)]">已配对设备</h3>
+              {syncPeers.length === 0 && (
+                <div className="mt-1 text-xs text-[var(--muted)]">暂无</div>
+              )}
+              {syncPeers.map((peer) => {
+                const online = syncDevices.some((device) => device.id === peer.device_id);
+                return (
+                  <div key={peer.id} className="mt-2 flex items-center gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs text-[var(--text)]">{peer.name}</div>
+                      <div className="text-[11px] text-[var(--muted)]">
+                        {online ? "在线" : "离线"}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={!online}
+                      className="rounded border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted)] disabled:opacity-40"
+                      onClick={async () => {
+                        setSyncMessage("正在同步…");
+                        try {
+                          const result = await runSync("lan", peer.id);
+                          setSyncMessage(
+                            `同步完成：拉取 ${result.pulled}，推送 ${result.pushed}`,
+                          );
+                          await refreshSync();
+                        } catch (reason) {
+                          setSyncMessage(String(reason));
+                        }
+                      }}
+                    >
+                      同步
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted)]"
+                      onClick={async () => {
+                        if (expandedSyncPeer === peer.id) {
+                          setExpandedSyncPeer(null);
+                          return;
+                        }
+                        setExpandedSyncPeer(peer.id);
+                        setSyncGrants(await getSyncGrants(peer.id));
+                      }}
+                    >
+                      模块
+                    </button>
+                  </div>
+                );
+              })}
+              {expandedSyncPeer && (
+                <div className="mt-3 rounded-xl border border-[var(--border)] p-3">
+                  <div className="mb-2 text-xs text-[var(--muted)]">模块授权</div>
+                  {SYNC_MODULES.map(([moduleId, label]) => {
+                    const enabled = syncGrants.some(
+                      (grant) => grant.module_id === moduleId && grant.permission === "write",
+                    );
+                    return (
+                      <label
+                        key={moduleId}
+                        className="flex items-center gap-2 py-0.5 text-xs text-[var(--text)]"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={enabled}
+                          onChange={async (event) => {
+                            if (event.target.checked) {
+                              await grantSyncModule(expandedSyncPeer, moduleId, "write");
+                            } else {
+                              await revokeSyncModule(expandedSyncPeer, moduleId);
+                            }
+                            setSyncGrants(await getSyncGrants(expandedSyncPeer));
+                          }}
+                        />
+                        {label}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+            <section className="rounded-2xl border border-[var(--border)] bg-[var(--panel-2)] p-4">
+              <h3 className="text-sm font-medium text-[var(--text)]">服务器同步</h3>
+              <label className="mt-2 block text-xs text-[var(--muted)]">
+                服务器地址
+                <input
+                  className="mt-1 w-full rounded border border-[var(--border)] bg-transparent px-3 py-2 text-sm text-[var(--text)]"
+                  value={draft.sync_server_url}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      sync_server_url: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label className="mt-2 block text-xs text-[var(--muted)]">
+                Token
+                <input
+                  type="password"
+                  className="mt-1 w-full rounded border border-[var(--border)] bg-transparent px-3 py-2 text-sm text-[var(--text)]"
+                  value={draft.sync_server_token}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      sync_server_token: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <button
+                type="button"
+                className="mt-2 rounded border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted)]"
+                onClick={async () => {
+                  try {
+                    await saveSetting("sync_pairing_enabled", draft.sync_pairing_enabled);
+                    await saveSetting("sync_server_url", draft.sync_server_url);
+                    await saveSetting("sync_server_token", draft.sync_server_token);
+                    setSyncMessage("正在连接服务器…");
+                    const result = await runSync("server", null);
+                    setSyncMessage(
+                      `服务器同步完成：拉取 ${result.pulled}，推送 ${result.pushed}`,
+                    );
+                    await refreshSync();
+                  } catch (reason) {
+                    setSyncMessage(String(reason));
+                  }
+                }}
+              >
+                保存并同步
+              </button>
+            </section>
+            <section className="rounded-2xl border border-[var(--border)] bg-[var(--panel-2)] p-4">
+              <div className="text-sm font-medium text-[var(--text)]">
+                冲突 {syncConflicts.length}
+              </div>
+              {syncConflicts.slice(0, 5).map((conflict) => (
+                <div
+                  key={`${conflict.module_id}-${conflict.entity_type}-${conflict.entity_id}`}
+                  className="mt-1 text-[11px] text-[var(--muted)]"
+                >
+                  {conflict.module_id}/{conflict.entity_type}: {conflict.detail}
+                </div>
+              ))}
+              {syncMessage && (
+                <div className="mt-2 text-xs text-[var(--muted)]">{syncMessage}</div>
+              )}
+            </section>
+          </div>
         )}
         {tab === "features" && (
         <div className="mt-4 border-t border-stone-200 pt-3">

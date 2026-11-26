@@ -36,6 +36,7 @@ from yumefriend.life_engine import life_step
 from yumefriend.live2d_runtime import router as live2d_runtime_router
 from yumefriend.media import attach_asset, message_with_assets
 from yumefriend.media import router as media_router
+from yumefriend.sync import router as sync_router
 from yumefriend.tools import router as tools_router
 from yumefriend.visual import model_id_for_url
 from yumefriend.visual import router as visual_router
@@ -116,6 +117,7 @@ app.include_router(media_router)
 app.include_router(visual_router)
 app.include_router(life_router)
 app.include_router(live2d_runtime_router)
+app.include_router(sync_router)
 
 LOG_DIR = Path(__file__).resolve().parents[3] / "user_data" / "logs"
 LOG_FILE = LOG_DIR / "yumefriend.log"

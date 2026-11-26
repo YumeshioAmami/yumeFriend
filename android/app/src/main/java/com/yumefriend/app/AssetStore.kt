@@ -75,4 +75,64 @@ object AssetStore {
         }.getOrNull() ?: return null
         return File(directory, item.optString("path")).takeIf { it.exists() }
     }
+
+    fun list(context: Context): List<LocalAssetInfo> {
+        val directory = File(context.filesDir, "assets")
+        val indexFile = File(directory, "index.json")
+        if (!indexFile.exists()) return emptyList()
+        val index = runCatching { JSONObject(indexFile.readText()) }.getOrNull() ?: return emptyList()
+        return index.keys().asSequence().mapNotNull { id ->
+            val item = index.optJSONObject(id) ?: return@mapNotNull null
+            LocalAssetInfo(
+                assetId = id,
+                sha256 = item.optString("sha256"),
+                kind = item.optString("kind"),
+                mime = item.optString("mime"),
+                size = item.optLong("size"),
+            )
+        }.toList()
+    }
+
+    fun saveIncoming(context: Context, sha: String, assetId: String, mime: String, data: ByteArray) {
+        synchronized(lock) {
+            val directory = File(context.filesDir, "assets").apply { mkdirs() }
+            val indexFile = File(directory, "index.json")
+            val index = if (indexFile.exists()) JSONObject(indexFile.readText()) else JSONObject()
+            val suffix = when (mime) {
+                "image/png" -> ".png"
+                "image/jpeg" -> ".jpg"
+                "image/webp" -> ".webp"
+                "image/gif" -> ".gif"
+                "audio/mpeg" -> ".mp3"
+                "audio/wav" -> ".wav"
+                else -> ".bin"
+            }
+            val file = File(directory, "$assetId$suffix")
+            file.writeBytes(data)
+            index.put(
+                assetId,
+                JSONObject()
+                    .put("sha256", sha)
+                    .put("kind", if (mime.startsWith("image/")) "image" else "file")
+                    .put("mime", mime)
+                    .put("size", data.size)
+                    .put("path", file.name)
+                    .put("created_at", java.time.Instant.now().toString()),
+            )
+            indexFile.writeText(index.toString())
+        }
+    }
+
+    fun bytes(context: Context, sha: String): ByteArray? {
+        val info = list(context).firstOrNull { it.sha256 == sha } ?: return null
+        return file(context, info.assetId)?.readBytes()
+    }
 }
+
+data class LocalAssetInfo(
+    val assetId: String,
+    val sha256: String,
+    val kind: String,
+    val mime: String,
+    val size: Long,
+)

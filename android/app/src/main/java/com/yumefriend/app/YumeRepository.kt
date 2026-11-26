@@ -1,6 +1,15 @@
 package com.yumefriend.app
 
 import com.yume.core.ReadRequest
+import com.yume.core.DeviceRecord
+import com.yume.core.GrantRecord
+import com.yume.core.GrantRequest
+import com.yume.core.PeerRecord
+import com.yume.core.SyncConflictRecord
+import com.yume.core.SyncPullRequest
+import com.yume.core.SyncPullResult
+import com.yume.core.SyncPushRequest
+import com.yume.core.SyncPushResult
 import com.yume.core.WriteOp
 import com.yume.core.WriteRequest
 import com.yume.core.YumeCore
@@ -1127,6 +1136,47 @@ class YumeRepository(
     fun stopMessage(messageId: String) {
         streamingDrafts[messageId]?.let { updateMessage(messageId, it, "partial") }
     }
+
+    fun devices(): List<DeviceRecord> = core.devices()
+
+    fun upsertDevice(device: DeviceRecord) = core.upsertDevice(device)
+
+    fun peers(): List<PeerRecord> = core.peers()
+
+    fun peer(peerId: String): PeerRecord? = core.peer(peerId)
+
+    fun createPeer(
+        peerId: String,
+        productId: String,
+        deviceId: String,
+        name: String,
+        kind: String,
+        pairSecret: String,
+    ): PeerRecord = core.createPeer(peerId, productId, deviceId, name, kind, pairSecret)
+
+    fun grants(peerId: String): List<GrantRecord> = core.grants(peerId)
+
+    fun grant(peerId: String, request: GrantRequest) = core.grant(peerId, request)
+
+    fun revokeGrant(peerId: String, moduleId: String) =
+        core.revokeGrant(peerId, moduleId, null)
+
+    fun hasGrant(peerId: String, moduleId: String, resourceId: String? = null, write: Boolean = false) =
+        core.hasGrant(peerId, moduleId, resourceId, write)
+
+    fun pull(request: SyncPullRequest): SyncPullResult = core.pull(request)
+
+    fun push(request: SyncPushRequest): SyncPushResult = core.push(request)
+
+    fun syncConflicts(): List<SyncConflictRecord> = core.syncConflicts()
+
+    fun syncState(key: String): String? = core.syncState(key)
+
+    fun putSyncState(key: String, value: String) = core.putSyncState(key, value)
+
+    fun syncModuleIds(): List<String> = core.modules()
+        .filter { module -> module.manifest.entities.any { it.sync } }
+        .map { it.manifest.moduleId }
 
     companion object {
         const val PORTRAIT_PACK_ID = "builtin-yui-portrait"

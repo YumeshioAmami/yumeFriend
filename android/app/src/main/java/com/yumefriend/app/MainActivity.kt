@@ -97,9 +97,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.yume.core.GrantRequest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonPrimitive
@@ -1582,6 +1584,30 @@ private fun SettingsScreen(
     var live2dDownloading by remember { mutableStateOf(false) }
     var live2dProgress by remember { mutableStateOf(0) }
     var live2dState by remember { mutableStateOf("") }
+    var pairingAllowed by remember {
+        mutableStateOf(repository.setting("sync_pairing_enabled")?.removeSurrounding("\"") == "true")
+    }
+    var serverUrl by remember {
+        mutableStateOf(repository.setting("sync_server_url")?.removeSurrounding("\"").orEmpty())
+    }
+    var serverToken by remember {
+        mutableStateOf(repository.setting("sync_server_token")?.removeSurrounding("\"").orEmpty())
+    }
+    var syncMessage by remember { mutableStateOf("") }
+    var syncTick by remember { mutableStateOf(0) }
+    var expandedPeerId by remember { mutableStateOf<String?>(null) }
+    var manualSyncHost by remember { mutableStateOf("") }
+    var manualSyncPort by remember { mutableStateOf("47896") }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(2_000)
+            syncTick += 1
+        }
+    }
+    val discoveredPeers = remember(syncTick) { AndroidSyncRuntime.discovered }
+    val syncedPeers = remember(syncTick) { repository.peers() }
+    val syncModules = remember { repository.syncModuleIds() }
+    val conflicts = remember(syncTick) { repository.syncConflicts() }
     val voiceTts = remember { TextToSpeech(context) { status -> ttsReady = status == TextToSpeech.SUCCESS } }
     LaunchedEffect(ttsReady) {
         if (ttsReady) {
@@ -1681,6 +1707,201 @@ private fun SettingsScreen(
         }
         if (live2dDownloading) Text("下载 $live2dProgress%")
         if (live2dState.isNotBlank()) Text(live2dState, style = MaterialTheme.typography.bodySmall)
+        HorizontalDivider()
+        Text("同步", style = MaterialTheme.typography.titleLarge)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("允许其他设备配对", modifier = Modifier.weight(1f))
+            Switch(
+                checked = pairingAllowed,
+                onCheckedChange = {
+                    pairingAllowed = it
+                    repository.putSetting("sync_pairing_enabled", JsonPrimitive(it).toString())
+                },
+            )
+        }
+        if (discoveredPeers.isNotEmpty()) {
+            Text("发现的设备", style = MaterialTheme.typography.titleSmall)
+            discoveredPeers.forEach { device ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(device.productId)
+                        Text(device.host, style = MaterialTheme.typography.bodySmall)
+                    }
+                    TextButton(
+                        enabled = syncedPeers.none { it.deviceId == device.deviceId },
+                        onClick = {
+                            scope.launch {
+                                syncMessage = "正在配对…"
+                                runCatching {
+                                    withContext(Dispatchers.IO) {
+                                        AndroidSyncRuntime.pair(context, device)
+                                    }
+                                }.onSuccess {
+                                    syncMessage = "配对完成"
+                                    syncTick += 1
+                                }.onFailure {
+                                    syncMessage = it.message ?: "配对失败"
+                                }
+                            }
+                        },
+                    ) { Text("配对") }
+                }
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                manualSyncHost,
+                { manualSyncHost = it },
+                Modifier.weight(1f),
+                label = { Text("手动地址") },
+                singleLine = true,
+            )
+            OutlinedTextField(
+                manualSyncPort,
+                { manualSyncPort = it },
+                Modifier.width(100.dp),
+                label = { Text("端口") },
+                singleLine = true,
+            )
+            TextButton(
+                enabled = manualSyncHost.isNotBlank(),
+                onClick = {
+                    scope.launch {
+                        syncMessage = "正在手动配对…"
+                        runCatching {
+                            withContext(Dispatchers.IO) {
+                                AndroidSyncRuntime.pairAddress(
+                                    context,
+                                    manualSyncHost.trim(),
+                                    manualSyncPort.toIntOrNull() ?: 47896,
+                                )
+                            }
+                        }.onSuccess {
+                            syncMessage = "手动配对完成"
+                            syncTick += 1
+                        }.onFailure {
+                            syncMessage = it.message ?: "手动配对失败"
+                        }
+                    }
+                },
+            ) { Text("配对") }
+        }
+        if (syncedPeers.isNotEmpty()) {
+            Text("已配对设备", style = MaterialTheme.typography.titleSmall)
+            syncedPeers.forEach { peer ->
+                val remote = discoveredPeers.find { it.deviceId == peer.deviceId }
+                val saved = repository.syncState("peer_address:${peer.deviceId}")
+                    ?.split(":", limit = 2)
+                val remoteHost = remote?.host ?: saved?.getOrNull(0)
+                val remotePort = remote?.port ?: saved?.getOrNull(1)?.toIntOrNull()
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            peer.name,
+                            modifier = Modifier.weight(1f).clickable {
+                                expandedPeerId = if (expandedPeerId == peer.id) null else peer.id
+                            },
+                        )
+                        Text(
+                            if (remoteHost != null && remotePort != null) "可连接" else "离线",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        TextButton(
+                            enabled = remoteHost != null && remotePort != null,
+                            onClick = {
+                                if (remoteHost == null || remotePort == null) return@TextButton
+                                scope.launch {
+                                    syncMessage = "正在同步…"
+                                    runCatching {
+                                        withContext(Dispatchers.IO) {
+                                            AndroidSyncRuntime.runLan(
+                                                context,
+                                                peer,
+                                                remoteHost,
+                                                remotePort,
+                                                "both",
+                                            )
+                                        }
+                                    }.onSuccess { result ->
+                                        syncMessage =
+                                            "同步完成：拉取 ${result.pulled}，推送 ${result.pushed}"
+                                        syncTick += 1
+                                    }.onFailure {
+                                        syncMessage = it.message ?: "同步失败"
+                                    }
+                                }
+                            },
+                        ) { Text("同步") }
+                    }
+                    if (expandedPeerId == peer.id) {
+                        syncModules.forEach { moduleId ->
+                            val enabled = repository.grants(peer.id)
+                                .any { it.moduleId == moduleId && it.permission == "write" }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(moduleId, modifier = Modifier.weight(1f))
+                                Switch(
+                                    checked = enabled,
+                                    onCheckedChange = { allowed ->
+                                        if (allowed) {
+                                            repository.grant(peer.id, GrantRequest(moduleId, null, "write"))
+                                        } else {
+                                            repository.revokeGrant(peer.id, moduleId)
+                                        }
+                                        syncTick += 1
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        OutlinedTextField(
+            serverUrl,
+            { serverUrl = it },
+            Modifier.fillMaxWidth(),
+            label = { Text("同步服务器地址") },
+        )
+        OutlinedTextField(
+            serverToken,
+            { serverToken = it },
+            Modifier.fillMaxWidth(),
+            label = { Text("服务器 token") },
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = {
+                repository.putSetting("sync_server_url", JsonPrimitive(serverUrl).toString())
+                repository.putSetting("sync_server_token", JsonPrimitive(serverToken).toString())
+                syncMessage = "服务器配置已保存"
+            }) { Text("保存服务器") }
+            TextButton(
+                enabled = serverUrl.isNotBlank() && serverToken.isNotBlank(),
+                onClick = {
+                    scope.launch {
+                        syncMessage = "正在连接服务器…"
+                        runCatching {
+                            withContext(Dispatchers.IO) {
+                                AndroidSyncRuntime.runServer(context, serverUrl, serverToken, "both")
+                            }
+                        }.onSuccess { result ->
+                            syncMessage = "服务器同步完成：拉取 ${result.pulled}，推送 ${result.pushed}"
+                            syncTick += 1
+                        }.onFailure {
+                            syncMessage = it.message ?: "服务器同步失败"
+                        }
+                    }
+                },
+            ) { Text("服务器同步") }
+        }
+        Text("冲突 ${conflicts.size}", style = MaterialTheme.typography.bodySmall)
+        conflicts.take(3).forEach {
+            Text(
+                "${it.moduleId}/${it.entityType}：${it.detail}",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        if (syncMessage.isNotBlank()) Text(syncMessage, style = MaterialTheme.typography.bodySmall)
         if (features.voice) {
             HorizontalDivider()
             Text("语音", style = MaterialTheme.typography.titleLarge)

@@ -33,6 +33,9 @@ export type Settings = {
   update_url: string;
   ui_scale: number;
   voice_retention_days: number;
+  sync_pairing_enabled: boolean;
+  sync_server_url: string;
+  sync_server_token: string;
 };
 
 export type Theme = {
@@ -107,6 +110,9 @@ const emptySettings: Settings = {
   update_url: "",
   ui_scale: 1,
   voice_retention_days: 30,
+  sync_pairing_enabled: false,
+  sync_server_url: "",
+  sync_server_token: "",
 };
 
 let voiceToken = 0;
@@ -295,6 +301,9 @@ export const useApp = create<AppState>((set, get) => ({
       await saveSetting("update_url", settings.update_url);
       await saveSetting("ui_scale", settings.ui_scale);
       await saveSetting("voice_retention_days", settings.voice_retention_days);
+      await saveSetting("sync_pairing_enabled", settings.sync_pairing_enabled);
+      await saveSetting("sync_server_url", settings.sync_server_url);
+      await saveSetting("sync_server_token", settings.sync_server_token);
       set({ settings, settingsOpen: false });
     } catch (error) {
       set({ error: String(error) });

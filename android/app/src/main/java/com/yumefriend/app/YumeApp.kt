@@ -1,6 +1,7 @@
 package com.yumefriend.app
 
 import android.app.Application
+import android.net.wifi.WifiManager
 import android.util.Log
 import com.yume.core.YumeCore
 import com.yume.core.manifest.ManifestLoader
@@ -15,6 +16,7 @@ import java.util.UUID
 class YumeApp : Application() {
     lateinit var repository: YumeRepository
         private set
+    private var multicastLock: WifiManager.MulticastLock? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -46,6 +48,13 @@ class YumeApp : Application() {
         }
         ScheduleAlarms.ensureChannel(this)
         AppLog.record(this, "应用启动")
+        multicastLock = (getSystemService(WIFI_SERVICE) as WifiManager)
+            .createMulticastLock("yumecore-mdns")
+            .apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+        AndroidSyncRuntime.start(this, repository, deviceId)
         CoroutineScope(Dispatchers.IO).launch { ScheduleAlarms.refresh(this@YumeApp) }
     }
 }

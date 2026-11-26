@@ -97,6 +97,10 @@ function startServices(): void {
       deviceId,
       "--product-id",
       "yumeFriend",
+      "--bind",
+      "0.0.0.0",
+      "--assets",
+      path.join(userData, "assets"),
     ],
     { stdio: "inherit" },
   );

@@ -647,3 +647,94 @@ export async function downloadLive2DRuntime(
     }
   }
 }
+
+export type SyncDevice = {
+  id: string;
+  name: string;
+  kind: string;
+  product_id: string;
+  host: string;
+  port: number;
+};
+
+export type SyncPeer = {
+  id: string;
+  product_id: string;
+  device_id: string;
+  name: string;
+  kind: string;
+  last_seen_at?: string | null;
+};
+
+export type SyncGrant = {
+  peer_id: string;
+  module_id: string;
+  resource_id?: string | null;
+  permission: string;
+  created_at: string;
+  revoked_at?: string | null;
+};
+
+export type SyncConflict = {
+  module_id: string;
+  entity_type: string;
+  entity_id: string;
+  detail: string;
+  created_at: string;
+};
+
+export function getSyncDevices(): Promise<SyncDevice[]> {
+  return request("/sync/devices");
+}
+
+export function getSyncPeers(): Promise<SyncPeer[]> {
+  return request("/sync/peers");
+}
+
+export function pairSyncDevice(deviceId: string): Promise<{ peer_id: string; pair_secret: string }> {
+  return request("/sync/pair", {
+    method: "POST",
+    body: JSON.stringify({ device_id: deviceId }),
+  });
+}
+
+export function pairSyncAddress(host: string, port: number): Promise<{ peer_id: string; pair_secret: string }> {
+  return request("/sync/pair-address", {
+    method: "POST",
+    body: JSON.stringify({ host, port }),
+  });
+}
+
+export function grantSyncModule(peerId: string, moduleId: string, permission: string): Promise<unknown> {
+  return request(`/sync/peers/${peerId}/grant`, {
+    method: "POST",
+    body: JSON.stringify({ module_id: moduleId, permission }),
+  });
+}
+
+export function getSyncGrants(peerId: string): Promise<SyncGrant[]> {
+  return request(`/sync/peers/${peerId}/grants`);
+}
+
+export function revokeSyncModule(peerId: string, moduleId: string): Promise<unknown> {
+  return request(`/sync/peers/${peerId}/revoke`, {
+    method: "POST",
+    body: JSON.stringify({ module_id: moduleId, permission: "write" }),
+  });
+}
+
+export function runSync(channel: "lan" | "server", peerId: string | null): Promise<{
+  pushed: number;
+  pulled: number;
+  assets_sent: number;
+  assets_received: number;
+}> {
+  return request("/sync/run", {
+    method: "POST",
+    body: JSON.stringify({ channel, peer_id: peerId, direction: "both" }),
+  });
+}
+
+export function getSyncConflicts(): Promise<SyncConflict[]> {
+  return request("/sync/conflicts");
+}
