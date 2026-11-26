@@ -870,7 +870,11 @@ private fun ImmersiveScreen(
                 ContentScale.Crop,
             )
         }
-        if (visualKind == "live2d" && visualPack?.modelPath?.isNotBlank() == true) {
+        if (
+            visualKind == "live2d" &&
+            visualPack?.modelPath?.isNotBlank() == true &&
+            Live2DRuntime.available(context)
+        ) {
             Live2DView(
                 visualPack.modelPath,
                 Modifier
