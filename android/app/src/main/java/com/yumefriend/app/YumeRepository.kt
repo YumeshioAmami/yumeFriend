@@ -5,9 +5,12 @@ import com.yume.core.WriteOp
 import com.yume.core.WriteRequest
 import com.yume.core.YumeCore
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -20,6 +23,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
+import org.json.JSONArray
 import java.time.Instant
 import java.util.UUID
 
@@ -331,7 +335,10 @@ class YumeRepository(
             )
         }
 
-    fun addMemory(friendId: String, content: String): Memory {
+    fun addMemory(friendId: String, content: String): Memory =
+        saveMemory(friendId, content, "fact", "user")
+
+    private fun saveMemory(friendId: String, content: String, kind: String, actor: String): Memory {
         val id = UUID.randomUUID().toString()
         val now = now()
         val record = write(
@@ -341,10 +348,10 @@ class YumeRepository(
             buildJsonObject {
                 put("id", text(id))
                 put("friend_id", text(friendId))
-                put("kind", text("fact"))
+                put("kind", text(kind))
                 put("layer", text("long_term"))
                 put("content", text(content))
-                put("importance", number(0.5))
+                put("importance", number(0.6))
                 put("confidence", number(0.6))
                 put("source_message_ids_json", text("[]"))
             },
@@ -357,17 +364,23 @@ class YumeRepository(
                 put("id", text(UUID.randomUUID().toString()))
                 put("friend_id", text(friendId))
                 put("memory_id", text(id))
-                put("actor", text("user"))
+                put("actor", text(actor))
                 put("action", text("create"))
                 put("after_json", text(record.toString()))
                 put("created_at", text(now))
             },
         )
-        return Memory(id, friendId, "fact", "long_term", content, 0.5)
+        return Memory(id, friendId, kind, "long_term", content, 0.6)
     }
 
     fun updateMemory(memory: Memory, content: String) {
-        write(
+        val before = read(
+            "memory",
+            "memories",
+            mapOf("id" to text(memory.id)),
+            1,
+        ).firstOrNull()
+        val after = write(
             "memory",
             "memories",
             WriteOp.UPDATE,
@@ -376,10 +389,56 @@ class YumeRepository(
                 put("content", text(content))
             },
         )
+        memoryEvent(memory.friendId, memory.id, "update", before, after)
     }
 
     fun deleteMemory(memory: Memory) {
+        val before = read(
+            "memory",
+            "memories",
+            mapOf("id" to text(memory.id)),
+            1,
+        ).firstOrNull()
         write("memory", "memories", WriteOp.DELETE, buildJsonObject { put("id", text(memory.id)) })
+        memoryEvent(memory.friendId, memory.id, "delete", before, null)
+    }
+
+    fun recallMemories(friendId: String, query: String): List<Memory> {
+        val all = memories(friendId)
+        val terms = query.split(Regex("[\\s,，。！？!?；;]+")).filter { it.length >= 2 }
+        val hits = all.filter { memory ->
+            terms.any { memory.content.contains(it, ignoreCase = true) }
+        }
+        val pinned = all.filter { it.layer == "pinned" }
+        val important = all
+            .filter { it.layer == "permanent" || it.layer == "long_term" }
+            .sortedByDescending { it.importance }
+            .take(8)
+        return (pinned + hits + important).distinctBy { it.id }.take(20)
+    }
+
+    private fun memoryEvent(
+        friendId: String,
+        memoryId: String,
+        action: String,
+        before: JsonObject?,
+        after: JsonObject?,
+    ) {
+        write(
+            "memory",
+            "memory_events",
+            WriteOp.CREATE,
+            buildJsonObject {
+                put("id", text(UUID.randomUUID().toString()))
+                put("friend_id", text(friendId))
+                put("memory_id", text(memoryId))
+                put("actor", text("user"))
+                put("action", text(action))
+                put("before_json", before?.let { text(it.toString()) } ?: JsonNull)
+                put("after_json", after?.let { text(it.toString()) } ?: JsonNull)
+                put("created_at", text(now()))
+            },
+        )
     }
 
     fun schedules(friendId: String): List<Schedule> = read(
@@ -742,13 +801,14 @@ class YumeRepository(
 
     private suspend fun streamReply(
         friend: Friend,
+        userText: String,
         assistantId: String,
         emit: suspend (ChatEvent) -> Unit,
         onDelta: (String) -> Unit,
     ) {
         try {
             val config = llmConfig() ?: error("请先在设置里填写模型")
-            val memoryText = memories(friend.id).take(20).joinToString("\n") { "- ${it.content}" }
+            val memoryText = recallMemories(friend.id, userText).joinToString("\n") { "- ${it.content}" }
             val history = messages(friend.id)
                 .filter { it.id != assistantId && it.content.isNotBlank() }
                 .takeLast(20)
@@ -763,6 +823,9 @@ class YumeRepository(
             val reply = openAi.streamChat(config, messages, onDelta = onDelta)
             updateMessage(assistantId, reply, "completed")
             emit(ChatEvent.End(messageById(assistantId)!!))
+            CoroutineScope(Dispatchers.IO).launch {
+                extractMemories(friend.id, messages.filter { it.first != "system" }, reply, config)
+            }
         } catch (error: CancellationException) {
             withContext(NonCancellable) {
                 streamingDrafts[assistantId]?.let { updateMessage(assistantId, it, "partial") }
@@ -776,6 +839,48 @@ class YumeRepository(
         }
     }
 
+    private suspend fun extractMemories(
+        friendId: String,
+        history: List<Pair<String, String>>,
+        assistantContent: String,
+        config: LlmConfig,
+    ) {
+        try {
+            val known = memories(friendId).map { it.content }.toMutableSet()
+            val dialogue = history.takeLast(20)
+                .joinToString("\n") { (role, content) -> "$role: $content" } +
+                "\nassistant: $assistantContent"
+            val reply = openAi.complete(
+                config,
+                listOf(
+                    "system" to (
+                        "从对话里提取值得长期记住的事实、偏好或约定。" +
+                            "只返回 JSON 数组，每项格式 " +
+                            "{\"content\":\"...\",\"kind\":\"fact|preference|promise|experience|insight\"}。" +
+                            "没有可记的就返回 []。不要编造。"
+                        ),
+                    "user" to dialogue,
+                ),
+                temperature = 0.2,
+            )
+            val start = reply.indexOf('[')
+            val end = reply.lastIndexOf(']')
+            if (start < 0 || end < start) return
+            val items = JSONArray(reply.substring(start, end + 1))
+            for (index in 0 until minOf(items.length(), 3)) {
+                val item = items.optJSONObject(index) ?: continue
+                val content = item.optString("content").trim()
+                if (content.isBlank() || content in known) continue
+                val kind = item.optString("kind")
+                    .takeIf { it in setOf("fact", "preference", "promise", "experience", "insight") }
+                    ?: "fact"
+                saveMemory(friendId, content, kind, "agent")
+                known += content
+            }
+        } catch (_: Exception) {
+        }
+    }
+
     private val streamingDrafts = mutableMapOf<String, String>()
 
     fun sendMessageStream(friend: Friend, text: String): Flow<ChatEvent> = flow {
@@ -784,7 +889,7 @@ class YumeRepository(
         streamingDrafts[assistant.id] = ""
         emit(ChatEvent.Start(assistant))
         var content = ""
-        streamReply(friend, assistant.id, emit = { emit(it) }) { delta ->
+        streamReply(friend, text, assistant.id, emit = { emit(it) }) { delta ->
             content += delta
             streamingDrafts[assistant.id] = content
         }
@@ -798,7 +903,7 @@ class YumeRepository(
         streamingDrafts[assistant.id] = ""
         emit(ChatEvent.Start(assistant))
         var content = ""
-        streamReply(friend, assistant.id, emit = { emit(it) }) { delta ->
+        streamReply(friend, user.content, assistant.id, emit = { emit(it) }) { delta ->
             content += delta
             streamingDrafts[assistant.id] = content
         }

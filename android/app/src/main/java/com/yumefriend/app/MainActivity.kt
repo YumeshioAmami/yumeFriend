@@ -505,6 +505,8 @@ private fun MemoryPanel(repository: YumeRepository, friendId: String) {
     var items by remember { mutableStateOf(repository.memories(friendId)) }
     var content by remember { mutableStateOf("") }
     var editing by remember { mutableStateOf<Memory?>(null) }
+    var query by remember { mutableStateOf("") }
+    var shown by remember { mutableStateOf(items) }
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(content, { content = it }, Modifier.weight(1f), label = { Text("新记忆") })
@@ -517,12 +519,19 @@ private fun MemoryPanel(repository: YumeRepository, friendId: String) {
                         content = ""
                         editing = null
                         items = repository.memories(friendId)
+                        shown = items
                     }
                 },
             ) { Text(if (editing == null) "添加" else "保存") }
         }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(query, { query = it }, Modifier.weight(1f), label = { Text("回忆关键词") })
+            TextButton(onClick = {
+                shown = if (query.isBlank()) items else repository.recallMemories(friendId, query)
+            }) { Text("回忆") }
+        }
         LazyColumn(Modifier.weight(1f).padding(top = 8.dp)) {
-            items(items, key = { it.id }) { memory ->
+            items(shown, key = { it.id }) { memory ->
                 Card(Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
                     Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(memory.content, Modifier.weight(1f))
@@ -531,6 +540,7 @@ private fun MemoryPanel(repository: YumeRepository, friendId: String) {
                             scope.launch {
                                 repository.deleteMemory(memory)
                                 items = repository.memories(friendId)
+                                shown = items
                             }
                         }) { Text("删") }
                     }
