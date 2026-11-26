@@ -1170,6 +1170,8 @@ class YumeRepository(
 
     fun syncConflicts(): List<SyncConflictRecord> = core.syncConflicts()
 
+    fun assetModules(assetId: String): Set<String> = core.assetModules(assetId)
+
     fun syncState(key: String): String? = core.syncState(key)
 
     fun putSyncState(key: String, value: String) = core.putSyncState(key, value)

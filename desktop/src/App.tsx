@@ -752,12 +752,16 @@ function SettingsModal() {
                 <input
                   type="checkbox"
                   checked={draft.sync_pairing_enabled}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    const enabled = event.target.checked;
                     setDraft((current) => ({
                       ...current,
-                      sync_pairing_enabled: event.target.checked,
-                    }))
-                  }
+                      sync_pairing_enabled: enabled,
+                    }));
+                    void saveSetting("sync_pairing_enabled", enabled).catch((reason) =>
+                      setSyncMessage(String(reason)),
+                    );
+                  }}
                 />
                 允许其他设备向我发起配对
               </label>

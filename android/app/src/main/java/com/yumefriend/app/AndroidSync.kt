@@ -13,6 +13,8 @@ import com.yume.core.SyncChange
 import com.yume.core.SyncPullRequest
 import com.yume.core.SyncPullResult
 import com.yume.core.SyncPushRequest
+import com.yume.core.SyncPushResult
+import com.yume.core.YUME_CORE_VERSION
 import fi.iki.elonen.NanoHTTPD
 import java.net.HttpURLConnection
 import java.net.URL
@@ -77,7 +79,7 @@ object AndroidSyncRuntime {
             PeerDiscovery(
                 productId = "yumeFriend",
                 deviceId = deviceId,
-                coreVersion = "0.2.0",
+                coreVersion = YUME_CORE_VERSION,
                 port = PORT,
                 onFound = { peer ->
                     if (peer.deviceId != deviceId && peer.protocolVersion == 1) {
@@ -183,12 +185,13 @@ object AndroidSyncRuntime {
             .map { it.moduleId }
             .distinct()
         val pushModules = remoteGrants.filter { it.permission == "write" }.map { it.moduleId }.toSet()
+        resetCursorsOnGrantChange(repo, peer.id, pullModules, pushModules)
         var result = SyncRunResult()
-        if (direction == "push" || direction == "both") {
+        if ((direction == "push" || direction == "both") && pushModules.isNotEmpty()) {
             val cursor = repo.syncState("peer:${peer.id}:push_cursor")
-            val local = repo.pull(SyncPullRequest(deviceId(context), cursor, pullModules))
-            val changes = local.changes.filter { it.moduleId in pushModules }
-            val tombstones = local.tombstones.filter { it.moduleId in pushModules }
+            val local = repo.pull(SyncPullRequest(deviceId(context), cursor, pushModules.toList()))
+            val changes = local.changes
+            val tombstones = local.tombstones
             if (changes.isNotEmpty() || tombstones.isNotEmpty()) {
                 httpJson(
                     "POST",
@@ -204,7 +207,7 @@ object AndroidSyncRuntime {
             }
             repo.putSyncState("peer:${peer.id}:push_cursor", local.cursor.orEmpty())
         }
-        if (direction == "pull" || direction == "both") {
+        if ((direction == "pull" || direction == "both") && pullModules.isNotEmpty()) {
             val cursor = repo.syncState("peer:${peer.id}:pull_cursor")
             val response = httpJson(
                 "POST",
@@ -360,6 +363,20 @@ object AndroidSyncRuntime {
 
     private fun encode(value: String): String = URLEncoder.encode(value, Charsets.UTF_8.name())
 
+    private fun resetCursorsOnGrantChange(
+        repo: YumeRepository,
+        peerId: String,
+        readable: List<String>,
+        writable: Set<String>,
+    ) {
+        val signature = readable.sorted().joinToString(",") + "|" + writable.sorted().joinToString(",")
+        val key = "peer:$peerId:grant_signature"
+        if (repo.syncState(key) == signature) return
+        repo.putSyncState("peer:$peerId:push_cursor", "")
+        repo.putSyncState("peer:$peerId:pull_cursor", "")
+        repo.putSyncState(key, signature)
+    }
+
     private fun httpJson(
         method: String,
         url: String,
@@ -423,13 +440,19 @@ private class PeerServer(
             uri == "/peer/v1/push" && session.method == Method.POST ->
                 push(session, peer)
             uri == "/peer/v1/assets" && session.method == Method.GET -> {
-                val items = AssetStore.list(context).map {
-                    RemoteAsset(it.assetId, it.sha256, it.mime)
-                }
+                val readable = readableModules(peer)
+                val items = AssetStore.list(context)
+                    .filter { repository.assetModules(it.assetId).any { module -> module in readable } }
+                    .map { RemoteAsset(it.assetId, it.sha256, it.mime) }
                 text(Response.Status.OK, json.encodeToString(AssetListPayload(items)))
             }
             uri.startsWith("/peer/v1/assets/") && session.method == Method.GET -> {
                 val sha = uri.removePrefix("/peer/v1/assets/")
+                val info = AssetStore.list(context).firstOrNull { it.sha256 == sha }
+                    ?: return text(Response.Status.NOT_FOUND, """{"error":"附件不存在"}""")
+                if (repository.assetModules(info.assetId).none { it in readableModules(peer) }) {
+                    return text(Response.Status.FORBIDDEN, """{"error":"附件未授权"}""")
+                }
                 val bytes = AssetStore.bytes(context, sha)
                     ?: return text(Response.Status.NOT_FOUND, """{"error":"附件不存在"}""")
                 newFixedLengthResponse(Response.Status.OK, "application/octet-stream", bytes.inputStream(), bytes.size.toLong())
@@ -440,6 +463,9 @@ private class PeerServer(
                     Response.Status.BAD_REQUEST,
                     """{"error":"缺少 asset_id"}""",
                 )
+                if (repository.assetModules(assetId).none { it in writableModules(peer) }) {
+                    return text(Response.Status.FORBIDDEN, """{"error":"附件未授权"}""")
+                }
                 val mime = session.parameters["mime"]?.firstOrNull() ?: "application/octet-stream"
                 val length = session.headers["content-length"]?.toIntOrNull() ?: 0
                 val bytes = session.inputStream.readNBytes(length)
@@ -479,6 +505,9 @@ private class PeerServer(
             .filter { it.permission == "read" || it.permission == "write" }
             .map { it.moduleId }
             .toSet()
+        if (allowed.isEmpty()) {
+            return text(Response.Status.OK, json.encodeToString(SyncPullResult(request.cursor)))
+        }
         val modules = if (request.moduleIds.isEmpty()) allowed.toList()
         else request.moduleIds.filter { it in allowed }
         return text(Response.Status.OK, json.encodeToString(repository.pull(request.copy(moduleIds = modules))))
@@ -493,6 +522,9 @@ private class PeerServer(
             .filter { it.permission == "write" }
             .map { it.moduleId }
             .toSet()
+        if (writable.isEmpty()) {
+            return text(Response.Status.OK, json.encodeToString(SyncPushResult(request.cursor)))
+        }
         return text(
             Response.Status.OK,
             json.encodeToString(
@@ -508,6 +540,16 @@ private class PeerServer(
 
     private fun peerFromToken(token: String?): PeerRecord? =
         token?.let { value -> repository.peers().find { it.pairSecret == value } }
+
+    private fun readableModules(peer: PeerRecord): Set<String> = repository.grants(peer.id)
+        .filter { it.permission == "read" || it.permission == "write" }
+        .map { it.moduleId }
+        .toSet()
+
+    private fun writableModules(peer: PeerRecord): Set<String> = repository.grants(peer.id)
+        .filter { it.permission == "write" }
+        .map { it.moduleId }
+        .toSet()
 
     private fun body(session: IHTTPSession): String {
         val files = HashMap<String, String>()
