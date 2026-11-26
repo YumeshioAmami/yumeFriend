@@ -78,6 +78,13 @@ data class DocumentHit(
     val text: String,
 )
 
+data class Voice(
+    val id: String,
+    val name: String,
+    val engineVoice: String,
+    val locale: String,
+)
+
 data class MessagePage(
     val items: List<Message>,
     val nextCursor: String?,
@@ -667,6 +674,64 @@ class YumeRepository(
                 put("color", text(theme.color))
                 put("mode", text(theme.mode))
             }.toString(),
+        )
+    }
+
+    fun voices(): List<Voice> = read("voice", "voices", limit = 500)
+        .sortedBy { it.str("name") }
+        .map {
+            val config = runCatching {
+                json.parseToJsonElement(it.str("config_json")) as JsonObject
+            }.getOrNull()
+            Voice(
+                it.str("id"),
+                it.str("name"),
+                config?.str("engine_voice").orEmpty(),
+                config?.str("locale").orEmpty(),
+            )
+        }
+
+    fun voiceById(id: String): Voice? = voices().find { it.id == id }
+
+    fun addVoice(name: String, engineVoice: String, locale: String): Voice {
+        val id = UUID.randomUUID().toString()
+        write(
+            "voice",
+            "voices",
+            WriteOp.CREATE,
+            buildJsonObject {
+                put("id", text(id))
+                put("name", text(name))
+                put("provider", text("system"))
+                put(
+                    "config_json",
+                    text(
+                        buildJsonObject {
+                            put("engine_voice", text(engineVoice))
+                            put("locale", text(locale))
+                        }.toString(),
+                    ),
+                )
+                put("speed", number(1.0))
+            },
+        )
+        return Voice(id, name, engineVoice, locale)
+    }
+
+    fun deleteVoice(voiceId: String) {
+        write("voice", "voices", WriteOp.DELETE, buildJsonObject { put("id", text(voiceId)) })
+    }
+
+    fun bindVoice(friendId: String, voiceId: String?, replyEnabled: Boolean) {
+        write(
+            "friend",
+            "friends",
+            WriteOp.UPDATE,
+            buildJsonObject {
+                put("id", text(friendId))
+                put("voice_id", voiceId?.let(::text) ?: JsonNull)
+                put("voice_reply_enabled", number(if (replyEnabled) 1 else 0))
+            },
         )
     }
 

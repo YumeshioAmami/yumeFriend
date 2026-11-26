@@ -43,6 +43,7 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -310,6 +311,13 @@ private fun ChatScreen(
             PackageManager.PERMISSION_GRANTED
         ) startSpeech(recognizer) else permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
     }
+    fun speak(messageId: String, text: String) {
+        if (!ttsReady || text.isBlank()) return
+        repository.voiceById(friend.voiceId.orEmpty())?.engineVoice
+            ?.let { engineName -> tts.voices?.find { it.name == engineName } }
+            ?.let { tts.voice = it }
+        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, messageId)
+    }
     fun runReply(events: kotlinx.coroutines.flow.Flow<ChatEvent>) {
         generationJob = scope.launch {
             sending = true
@@ -340,7 +348,9 @@ private fun ChatScreen(
                     }
                 }
                 if (friend.voiceReplyEnabled && ttsReady) {
-                    tts.speak(messages.lastOrNull { it.role == "assistant" }?.content.orEmpty(), TextToSpeech.QUEUE_FLUSH, null, "reply")
+                    messages.lastOrNull { it.role == "assistant" }?.let {
+                        speak(it.id, it.content)
+                    }
                 }
             } catch (_: CancellationException) {
             } catch (error: Exception) {
@@ -413,7 +423,7 @@ private fun ChatScreen(
             }
             TextButton(onClick = {
                 val text = messages.lastOrNull { it.role == "assistant" }?.content.orEmpty()
-                if (text.isNotBlank() && ttsReady) tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "reply")
+                if (text.isNotBlank()) speak("reply", text)
             }) { Text("语音") }
         }
         LazyColumn(
@@ -428,7 +438,7 @@ private fun ChatScreen(
             }
             items(messages, key = { it.id }) { message ->
                 MessageRow(message, ttsReady, onRetry = { retry(message.id) }) {
-                    if (ttsReady) tts.speak(message.content, TextToSpeech.QUEUE_FLUSH, null, message.id)
+                    speak(message.id, message.content)
                 }
             }
         }
@@ -536,6 +546,10 @@ private fun PersonaPanel(repository: YumeRepository, friend: Friend, onSaved: ()
     var name by remember { mutableStateOf(friend.name) }
     var personality by remember { mutableStateOf(friend.personality) }
     var instructions by remember { mutableStateOf(friend.customInstructions) }
+    val voices = remember(friend.id) { repository.voices() }
+    var voiceId by remember(friend.id) { mutableStateOf(friend.voiceId) }
+    var voiceReplyEnabled by remember(friend.id) { mutableStateOf(friend.voiceReplyEnabled) }
+    var voiceMenu by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("名字") })
         Spacer(Modifier.height(8.dp))
@@ -543,11 +557,35 @@ private fun PersonaPanel(repository: YumeRepository, friend: Friend, onSaved: ()
         Spacer(Modifier.height(8.dp))
         OutlinedTextField(instructions, { instructions = it }, Modifier.fillMaxWidth(), label = { Text("补充要求") }, minLines = 3)
         Spacer(Modifier.height(12.dp))
+        Text("声音", style = MaterialTheme.typography.titleMedium)
+        Box {
+            TextButton(onClick = { voiceMenu = true }) {
+                Text(voices.find { it.id == voiceId }?.name ?: "系统默认音色")
+            }
+            DropdownMenu(expanded = voiceMenu, onDismissRequest = { voiceMenu = false }) {
+                DropdownMenuItem(text = { Text("系统默认音色") }, onClick = {
+                    voiceId = null
+                    voiceMenu = false
+                })
+                voices.forEach { voice ->
+                    DropdownMenuItem(text = { Text(voice.name) }, onClick = {
+                        voiceId = voice.id
+                        voiceMenu = false
+                    })
+                }
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("回复默认带语音", modifier = Modifier.weight(1f))
+            Switch(checked = voiceReplyEnabled, onCheckedChange = { voiceReplyEnabled = it })
+        }
+        Spacer(Modifier.height(12.dp))
         Button(
             enabled = name.isNotBlank(),
             onClick = {
                 scope.launch {
                     repository.updateFriend(friend, name.trim(), personality, instructions)
+                    repository.bindVoice(friend.id, voiceId, voiceReplyEnabled)
                     onSaved()
                 }
             },
@@ -718,11 +756,27 @@ private fun SettingsScreen(
     theme: AppTheme,
     onThemeChanged: (AppTheme) -> Unit,
 ) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var baseUrl by remember { mutableStateOf(repository.setting("llm_base_url")?.removeSurrounding("\"").orEmpty()) }
     var apiKey by remember { mutableStateOf(repository.setting("llm_api_key")?.removeSurrounding("\"").orEmpty()) }
     var model by remember { mutableStateOf(repository.setting("llm_model")?.removeSurrounding("\"").orEmpty()) }
     var testState by remember { mutableStateOf("") }
+    var ttsReady by remember { mutableStateOf(false) }
+    var systemVoices by remember { mutableStateOf<List<android.speech.tts.Voice>>(emptyList()) }
+    var savedVoices by remember { mutableStateOf(repository.voices()) }
+    val voiceTts = remember { TextToSpeech(context) { status -> ttsReady = status == TextToSpeech.SUCCESS } }
+    LaunchedEffect(ttsReady) {
+        if (ttsReady) {
+            systemVoices = voiceTts.voices.orEmpty()
+                .filter { it.locale.language == "zh" || it.locale.language == "en" }
+                .sortedBy { it.name }
+                .take(30)
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose { voiceTts.shutdown() }
+    }
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -769,5 +823,25 @@ private fun SettingsScreen(
         HorizontalDivider()
         Text("语音", style = MaterialTheme.typography.titleLarge)
         Text("使用 Android 系统 TTS / STT。", style = MaterialTheme.typography.bodySmall)
+        Text("已保存音色", style = MaterialTheme.typography.titleSmall)
+        savedVoices.forEach { voice ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(voice.name, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                TextButton(onClick = {
+                    repository.deleteVoice(voice.id)
+                    savedVoices = repository.voices()
+                }) { Text("删") }
+            }
+        }
+        Text("系统音色", style = MaterialTheme.typography.titleSmall)
+        systemVoices.forEach { voice ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(voice.name, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                TextButton(onClick = {
+                    repository.addVoice(voice.name, voice.name, voice.locale.toLanguageTag())
+                    savedVoices = repository.voices()
+                }) { Text("添加") }
+            }
+        }
     }
 }
