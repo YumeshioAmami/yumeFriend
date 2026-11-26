@@ -68,6 +68,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonPrimitive
+import org.json.JSONArray
+import org.json.JSONObject
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -478,14 +480,24 @@ private fun MessageRow(
     onSpeak: () -> Unit,
 ) {
     val assistant = message.role == "assistant"
+    val bubbles = message.content.split("<<<MSG>>>").map { it.trim() }.filter { it.isNotEmpty() }
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = if (assistant) Alignment.Start else Alignment.End,
     ) {
-        Text(
-            text = message.content.ifBlank { if (message.status == "streaming") "……" else "" },
-            style = MaterialTheme.typography.bodyLarge,
-        )
+        if (bubbles.isEmpty() && message.status == "streaming") {
+            Text("……", style = MaterialTheme.typography.bodyLarge)
+        }
+        bubbles.forEachIndexed { index, bubble ->
+            if (index > 0) Spacer(Modifier.height(4.dp))
+            Text(text = bubble, style = MaterialTheme.typography.bodyLarge)
+        }
+        sourceSummary(message.sourcesJson)?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall)
+        }
+        toolSummary(message.toolCallsJson)?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall)
+        }
         if (assistant && message.content.isNotBlank() && ttsReady) {
             TextButton(onClick = onSpeak, modifier = Modifier.height(28.dp)) {
                 Text("朗读", style = MaterialTheme.typography.labelSmall)
@@ -497,6 +509,35 @@ private fun MessageRow(
             }
         }
     }
+}
+
+private fun sourceSummary(raw: String): String? {
+    if (raw.isBlank()) return null
+    val items = runCatching { JSONArray(raw) }.getOrNull() ?: return null
+    val titles = (0 until items.length()).mapNotNull { index ->
+        val item = items.optJSONObject(index) ?: return@mapNotNull null
+        item.optString("title").ifBlank { item.optString("url") }
+    }
+    return titles.takeIf { it.isNotEmpty() }?.joinToString(prefix = "来源：", separator = "；")
+}
+
+private fun toolSummary(raw: String): String? {
+    if (raw.isBlank()) return null
+    val names = runCatching {
+        when {
+            raw.trimStart().startsWith("[") -> {
+                val items = JSONArray(raw)
+                (0 until items.length()).mapNotNull { index ->
+                    items.optJSONObject(index)?.optString("name")?.ifBlank { null }
+                }
+            }
+            raw.trimStart().startsWith("{") -> {
+                listOfNotNull(JSONObject(raw).optString("name").ifBlank { null })
+            }
+            else -> emptyList()
+        }
+    }.getOrDefault(emptyList())
+    return names.takeIf { it.isNotEmpty() }?.joinToString(prefix = "工具：", separator = "、")
 }
 
 @Composable

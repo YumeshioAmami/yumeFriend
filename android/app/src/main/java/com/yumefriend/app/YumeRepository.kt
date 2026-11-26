@@ -47,6 +47,8 @@ data class Message(
     val content: String,
     val status: String,
     val createdAt: String,
+    val sourcesJson: String = "",
+    val toolCallsJson: String = "",
 )
 
 data class Memory(
@@ -248,6 +250,8 @@ class YumeRepository(
                 content = it.str("content"),
                 status = it.str("status"),
                 createdAt = it.str("created_at"),
+                sourcesJson = it.str("sources_json"),
+                toolCallsJson = it.str("tool_calls_json"),
             )
         }
 
@@ -923,6 +927,8 @@ class YumeRepository(
             it.str("content"),
             it.str("status"),
             it.str("created_at"),
+            it.str("sources_json"),
+            it.str("tool_calls_json"),
         )
     }
 
